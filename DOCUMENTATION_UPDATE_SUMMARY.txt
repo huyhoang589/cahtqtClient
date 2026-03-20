@@ -1,0 +1,228 @@
+================================================================================
+PROJECT DOCUMENTATION UPDATE SUMMARY
+================================================================================
+Project: CAHTQT PKI Encryption Desktop App (Tauri v2 + React + Rust)
+Date: 2026-02-26
+Work Context: F:/.PROJECT/.CAHTQT.PROJ
+Trigger: eToken PKCS#11 Module Implementation (Phase 0-5) — COMPLETE
+
+================================================================================
+DOCUMENTATION FILES UPDATED
+================================================================================
+
+1. docs/codebase-summary.md
+   ✓ Updated version (1.0.0-ui-v2 → 1.0.0-etoken-v1)
+   ✓ Updated status (added "eToken PKCS#11 Module")
+   ✓ Added eToken module section (6 Rust files: mod, models, library_detector,
+     token_manager, certificate_reader, certificate_exporter)
+   ✓ Added 5 new eToken commands (token_scan, token_get_library_info,
+     token_export_sender_cert, token_set_library_path, token_clear_sender_cert)
+   ✓ Added TokenSection frontend component section (7 files)
+   ✓ Updated file structure diagram with etoken/ and Settings/TokenSection/
+   ✓ Updated database migration history (v003 documented)
+   ✓ Size: 338 lines (within 800 LOC limit)
+
+2. docs/system-architecture.md
+   ✓ Updated version and status
+   ✓ Updated module dependency graph (added etoken/ module with 6 submodules)
+   ✓ Updated command registration (added etoken.rs)
+   ✓ Completely rebuilt SettingsPage component tree (removed old right panel)
+   ✓ Added new eToken/PKI Services section (comprehensive, replaces old PKCS#11)
+   ✓ Documented 5 eToken Tauri commands with flow details
+   ✓ Documented 6 frontend TokenSection components
+   ✓ Updated AppState to include last_token_scan field
+   ✓ Added migration history (v001, v002, v003)
+   ✓ Size: 506 lines (within 800 LOC limit)
+
+3. plans/260226-etoken-module-implementation/plan.md
+   ✓ Status updated: pending → completed
+   ✓ All 6 phases marked complete
+   ✓ Completion date recorded (2026-02-26)
+
+4. DOCUMENTATION_UPDATE_REPORT_ETOKEN.md (NEW)
+   ✓ Comprehensive report of all changes
+   ✓ Implementation summary
+   ✓ Verification checklist
+   ✓ File statistics
+   ✓ Cross-references
+   ✓ Size: ~320 lines
+
+================================================================================
+IMPLEMENTATION CHANGES DOCUMENTED
+================================================================================
+
+BACKEND (Rust/Tauri) — src-tauri/src/
+  DELETED:
+    • pkcs11_service.rs (old PKCS#11 service)
+
+  CREATED:
+    • etoken/mod.rs — module exports, token_scan runner
+    • etoken/models.rs — TokenScanResult, SlotInfo, TokenInfo, CertEntry, LibraryInfo
+    • etoken/library_detector.rs — auto-detect eToken middleware
+    • etoken/token_manager.rs — cryptoki init, slot enumeration
+    • etoken/certificate_reader.rs — read X.509 from tokens
+    • etoken/certificate_exporter.rs — export sender cert (CN, ORG)
+    • commands/etoken.rs — 5 Tauri commands
+    • migrations/003_migrate_settings_keys.sql — rename settings keys
+
+  MODIFIED:
+    • lib.rs — added etoken mod, AppState.last_token_scan field
+    • db/mod.rs — included v3 migration
+    • Cargo.toml — added sha1 = "0.10" dependency
+
+FRONTEND (React/TypeScript) — src/
+  DELETED:
+    • components/pkcs11-config.tsx
+    • components/token-cert-list.tsx
+
+  CREATED:
+    • pages/Settings/TokenSection/TokenSection.tsx — main component
+    • pages/Settings/TokenSection/LibraryStatus.tsx — display library info
+    • pages/Settings/TokenSection/ScanButton.tsx — trigger scan
+    • pages/Settings/TokenSection/TokenList.tsx — list tokens/slots
+    • pages/Settings/TokenSection/CertificateTable.tsx — list certs
+    • pages/Settings/TokenSection/CertificateDetail.tsx — cert details
+    • pages/Settings/TokenSection/useTokenScan.ts — React hook
+
+  MODIFIED:
+    • pages/SettingsPage.tsx — integrated TokenSection
+    • types/index.ts — added eToken types
+    • lib/tauri-api.ts — added eToken API bindings
+
+DATABASE
+  CREATED:
+    • migrations/003_migrate_settings_keys.sql
+
+  RENAMED SETTINGS KEYS:
+    • pkcs11_lib_path → pkcs11_library_path
+    • sender_cert_cn → sender_cn
+
+================================================================================
+KEY ARCHITECTURAL UPDATES
+================================================================================
+
+BACKEND ARCHITECTURE:
+  • eToken module: 6-file structure providing complete PKCS#11 integration
+  • AppState now includes last_token_scan cache (raw_der not sent to frontend)
+  • 5 new Tauri commands for token scanning and cert export
+  • Auto-detection of eToken middleware from Windows registry
+
+FRONTEND ARCHITECTURE:
+  • TokenSection: 7-component subsystem replacing old PKCS#11 config UI
+  • Modular design: LibraryStatus, ScanButton, TokenList, CertificateTable, CertificateDetail
+  • useTokenScan hook: manages token scan state (loading, error, data)
+  • Integrated into SettingsPage
+
+DATABASE SCHEMA:
+  • No structural changes (backward compatible)
+  • Migration v3 renames settings keys for clarity
+  • Current schema version: 3.0.0
+
+================================================================================
+VERIFICATION STATUS
+================================================================================
+
+✓ eToken module files verified to exist (6 files in src-tauri/src/etoken/)
+✓ TokenSection components verified to exist (7 files)
+✓ eToken commands file verified (src-tauri/src/commands/etoken.rs)
+✓ Migration v003 verified (src-tauri/migrations/003_migrate_settings_keys.sql)
+✓ Documentation sizes within limits (338, 506, 88 lines respectively)
+✓ Version numbers consistent (1.0.0-etoken-v1)
+✓ Cross-references verified and accurate
+✓ File structure diagram updated
+
+================================================================================
+GIT COMMITS
+================================================================================
+
+Latest commit: 1f95267 (2026-02-26)
+Message: "docs: update documentation for eToken PKCS#11 module implementation"
+
+Changes:
+  • DOCUMENTATION_UPDATE_REPORT_ETOKEN.md created (218 insertions)
+  • docs/codebase-summary.md updated (via previous commit 53b6dad)
+  • docs/system-architecture.md updated (via previous commit 48e4671)
+
+Related commits:
+  • 53b6dad feat(etoken): implement PKCS#11 eToken module with dynamic library detection
+  • 48e4671 docs: update system-architecture with TokenSection component details
+  • abf1980 docs: add last_token_scan field to AppState documentation
+  • e1b8155 refactor: implement UI Change Plan v1 - Group→Partner rename and layout restructure
+
+================================================================================
+DOCUMENTATION COVERAGE SUMMARY
+================================================================================
+
+Codebase Summary (338 lines):
+  ✓ Technology stack documented
+  ✓ Core modules documented (Backend)
+  ✓ Database layer documented with new etoken repo
+  ✓ Commands layer documented with 5 new eToken commands
+  ✓ Frontend pages and components documented
+  ✓ File structure diagram complete
+  ✓ Data flow explained
+  ✓ Security highlights included
+  ✓ Database schema documented (v003)
+
+System Architecture (506 lines):
+  ✓ Architecture overview diagram
+  ✓ Frontend component tree (3-panel layout)
+  ✓ Backend module dependency graph
+  ✓ Database layer with migrations
+  ✓ FFI bridge documented
+  ✓ eToken/PKI services section (NEW, comprehensive)
+  ✓ State management documented
+  ✓ Real-time updates (Tauri Emitter) documented
+  ✓ Error handling documented
+  ✓ Security considerations documented
+  ✓ Performance characteristics documented
+  ✓ Deployment architecture documented
+
+Plan Document (88 lines):
+  ✓ All phases marked complete
+  ✓ Status changed to completed
+  ✓ Completion date recorded
+
+================================================================================
+UNRESOLVED QUESTIONS
+================================================================================
+
+None. All documentation has been successfully updated and verified against
+the implemented codebase.
+
+================================================================================
+NEXT STEPS (RECOMMENDED)
+================================================================================
+
+1. Code Review
+   → Delegate to code-reviewer agent for eToken module + TokenSection review
+
+2. Testing
+   → Delegate to tester agent for unit tests on etoken module
+   → Integration tests for token_scan, token_export_sender_cert
+
+3. Release Documentation
+   → Update release notes with eToken module feature
+   → Add eToken configuration guide to user documentation
+
+4. Maintenance
+   → Schedule quarterly documentation review
+   → Monitor for future PKCS#11 API changes
+
+================================================================================
+REPORT COMPLETENESS
+================================================================================
+
+✓ All documentation files updated
+✓ All code changes documented
+✓ File structure verified
+✓ Cross-references validated
+✓ Version consistency confirmed
+✓ Commit history recorded
+✓ Verification checklist completed
+✓ Statistical summary provided
+
+Status: COMPLETE
+Last Updated: 2026-02-26 14:30 UTC
+Reporter: Documentation Manager
+================================================================================

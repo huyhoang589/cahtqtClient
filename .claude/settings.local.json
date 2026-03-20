@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx ccusage)",
+      "Bash(cargo check:*)",
+      "Bash(magick:*)",
+      "Bash(convert:*)",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(git init:*)",
+      "Bash(git config:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(npm run tauri:*)",
+      "Bash(powershell -Command \"Remove-Item ''.git/index.lock'' -Force -ErrorAction SilentlyContinue\")",
+      "Bash(git reset:*)",
+      "Bash(git rm:*)",
+      "Bash(git push:*)",
+      "Bash(gh auth status:*)",
+      "Bash(python:*)",
+      "Bash(gh repo create:*)",
+      "Bash(git checkout:*)",
+      "Bash(gh repo edit:*)",
+      "Bash(gh repo view:*)",
+      "Bash(git branch:*)",
+      "Bash(node:*)",
+      "Bash(tail:*)",
+      "Bash(grep:*)"
+    ]
+  }
+}
