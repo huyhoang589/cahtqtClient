@@ -1,0 +1,151 @@
+/* CAHTQT Design Tokens — machine-readable, do not edit manually
+ * Version: 1.0.0 | Generated: 2026-03-26
+ * Parser pattern: --cahtqt-[a-z-]+:\s*[^;]+;
+ */
+
+:root {
+  /* === BACKGROUND === */
+  --cahtqt-bg-app:             #1a1f2e;
+  --cahtqt-bg-sidebar:         #12161f;
+  --cahtqt-bg-surface:         #ffffff;
+  --cahtqt-bg-content:         #f0f4f8;
+  --cahtqt-bg-content-alt:     #e6edf5;
+  --cahtqt-bg-panel-right:     #1a2340;
+  --cahtqt-bg-log:             #0d1117;
+  --cahtqt-bg-input:           #ffffff;
+  --cahtqt-bg-table-header:    #1e2740;
+  --cahtqt-bg-table-row:       #ffffff;
+  --cahtqt-bg-table-row-alt:   #f0f7ff;
+  --cahtqt-bg-table-hover:     #dbeafe;
+  --cahtqt-bg-dialog:          #ffffff;
+
+  /* === BRAND & INTERACTIVE === */
+  --cahtqt-color-primary:      #00c6e0;
+  --cahtqt-color-primary-hover: #009ab0;
+  --cahtqt-color-success:      #00c853;
+  --cahtqt-color-danger:       #f44336;
+  --cahtqt-color-warning:      #ff9800;
+  --cahtqt-color-pink:         #e91e8c;
+  --cahtqt-color-info:         #2196f3;
+  --cahtqt-bg-dialog-token:    #e65100;
+  --cahtqt-border-dialog-token: #bf360c;
+
+  /* === TEXT === */
+  --cahtqt-text-primary:       #f1f5f9;
+  --cahtqt-text-secondary:     #94a3b8;
+  --cahtqt-text-on-light:      #1e293b;
+  --cahtqt-text-on-light-2:    #334155;
+  --cahtqt-text-muted:         #64748b;
+  --cahtqt-text-label:         #64748b;
+  --cahtqt-text-link:          #00c6e0;
+  --cahtqt-text-log-error:     #ff5252;
+  --cahtqt-text-log-info:      #b0bec5;
+  --cahtqt-text-log-success:   #00e676;
+  --cahtqt-text-log-warning:   #fbbf24;
+
+  /* === BORDER === */
+  --cahtqt-border-dark:        #2d3f5c;
+  --cahtqt-border-light:       #cbd5e1;
+  --cahtqt-border-input:       #94a3b8;
+  --cahtqt-border-focus:       #00c6e0;
+
+  /* === STATUS === */
+  --cahtqt-status-connected:    #00e676;
+  --cahtqt-status-disconnected: #f44336;
+  --cahtqt-status-pending:      #ff9800;
+  --cahtqt-status-idle:         #94a3b8;
+
+  /* === TYPOGRAPHY === */
+  --cahtqt-font-ui:   'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --cahtqt-font-mono: 'JetBrains Mono', 'Consolas', 'Courier New', monospace;
+
+  --cahtqt-font-size-xs:   11px;
+  --cahtqt-font-size-sm:   12px;
+  --cahtqt-font-size-base: 13px;
+  --cahtqt-font-size-md:   14px;
+  --cahtqt-font-size-lg:   16px;
+  --cahtqt-font-size-xl:   18px;
+  --cahtqt-font-size-2xl:  22px;
+
+  --cahtqt-font-weight-regular:  400;
+  --cahtqt-font-weight-medium:   500;
+  --cahtqt-font-weight-semibold: 600;
+  --cahtqt-font-weight-bold:     700;
+
+  --cahtqt-line-height-tight: 1.25;
+  --cahtqt-line-height-base:  1.5;
+  --cahtqt-line-height-loose: 1.75;
+
+  /* === SPACING === */
+  --cahtqt-space-1:  4px;
+  --cahtqt-space-2:  8px;
+  --cahtqt-space-3:  12px;
+  --cahtqt-space-4:  16px;
+  --cahtqt-space-5:  20px;
+  --cahtqt-space-6:  24px;
+  --cahtqt-space-8:  32px;
+  --cahtqt-space-10: 40px;
+  --cahtqt-space-12: 48px;
+
+  /* === BORDER RADIUS === */
+  --cahtqt-radius-sm:   6px;
+  --cahtqt-radius-md:   10px;
+  --cahtqt-radius-lg:   14px;
+  --cahtqt-radius-xl:   18px;
+  --cahtqt-radius-full: 9999px;
+
+  /* === SHADOWS === */
+  --cahtqt-shadow-sm:         0 1px 3px rgba(0,0,0,0.3);
+  --cahtqt-shadow-md:         0 4px 12px rgba(0,0,0,0.4);
+  --cahtqt-shadow-lg:         0 8px 24px rgba(0,0,0,0.5);
+  --cahtqt-shadow-xl:         0 20px 60px rgba(0,0,0,0.6);
+  --cahtqt-shadow-glow-cyan:  0 0 16px rgba(0,198,224,0.35);
+  --cahtqt-shadow-glow-green: 0 0 12px rgba(0,200,83,0.35);
+  --cahtqt-shadow-card:       0 2px 8px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.04);
+  --cahtqt-shadow-card-hover: 0 4px 16px rgba(0,0,0,0.12), 0 2px 6px rgba(0,0,0,0.06);
+
+  /* === TRANSITIONS === */
+  --cahtqt-transition-fast: 100ms ease;
+  --cahtqt-transition-base: 200ms ease;
+  --cahtqt-transition-slow: 300ms ease-in-out;
+
+  /* === EXTENDED: BACKGROUNDS === */
+  --cahtqt-bg-surface-subtle:   #f8fafc;
+  --cahtqt-bg-surface-muted:    #f1f5f9;
+  --cahtqt-bg-selected:         #e0f2fe;
+  --cahtqt-bg-selected-strong:  #bfdbfe;
+  --cahtqt-bg-selected-accent:  #e0f7ff;
+  --cahtqt-bg-btn-disabled:     #c8d0db;
+  --cahtqt-bg-btn-hover:        #253554;
+  --cahtqt-bg-black:            #000000;
+
+  /* === EXTENDED: BORDERS === */
+  --cahtqt-border-subtle:       #e2e8f0;
+
+  /* === EXTENDED: BRAND VARIANTS === */
+  --cahtqt-color-primary-alt:          #00b4d8;
+  --cahtqt-color-primary-dark-alt:     #0097b8;
+  --cahtqt-color-primary-gradient-end: #0098b5;
+  --cahtqt-color-success-dark:         #00875a;
+  --cahtqt-color-success-border:       #00b464;
+  --cahtqt-color-success-hover:        #76a83e;
+  --cahtqt-color-danger-hover:         #d32f2f;
+  --cahtqt-color-warning-light:        #ffe0b2;
+  --cahtqt-color-warning-lighter:      #ffccbc;
+  --cahtqt-color-warning-muted:        #f0a000;
+  --cahtqt-color-warning-text:         #a06800;
+  --cahtqt-color-warning-dark:         #b45309;
+  --cahtqt-color-accent-indigo:        #6366f1;
+  --cahtqt-color-done:                 #16a34a;
+  --cahtqt-color-error-alt:            #dc2626;
+
+  /* === EXTENDED: TEXT === */
+  --cahtqt-text-white:          #ffffff;
+  --cahtqt-text-btn-disabled:   #8895a7;
+
+  /* === EXTENDED: SCROLLBARS === */
+  --cahtqt-scrollbar-light:       #c8d0db;
+  --cahtqt-scrollbar-light-hover: #a0aab4;
+  --cahtqt-scrollbar-dark:        #2d3a4a;
+  --cahtqt-scrollbar-dark-hover:  #3d4f62;
+}
