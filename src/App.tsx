@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import AppHeader from "./components/app-header";
 import AppSidebar from "./components/app-sidebar";
+import LicenseGate from "./components/license-gate";
 import LogPanel from "./components/log-panel";
 import { AppProvider } from "./contexts/app-context";
 import { useLogPanel } from "./hooks/use-log-panel";
@@ -13,6 +14,7 @@ export default function App() {
   const { entries, clearEntries } = useLogPanel();
 
   return (
+    <LicenseGate>
     <AppProvider>
     <BrowserRouter>
       <div className="app-shell">
@@ -35,5 +37,6 @@ export default function App() {
       </div>
     </BrowserRouter>
     </AppProvider>
+    </LicenseGate>
   );
 }

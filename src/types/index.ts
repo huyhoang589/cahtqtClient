@@ -219,3 +219,31 @@ export interface CommunicationCertInfo {
 // ---- Cert Expiry ---------------------------------------------------------------
 
 export type CertExpiryStatus = "valid" | "expiring_soon" | "expired";
+
+// ---- License Module Types -----------------------------------------------------
+
+export type LicenseStatus =
+  | "valid" | "expired" | "not_found" | "no_token"
+  | "token_mismatch" | "machine_mismatch" | "corrupted";
+
+export interface LicenseInfo {
+  status: LicenseStatus;
+  expires_at: number | null;  // unix timestamp, null = perpetual
+  product: string | null;
+}
+
+export interface LicenseCheckResult {
+  state: "ok" | "no_token" | "no_license" | "error";
+  error_msg: string | null;
+}
+
+export interface MachineCredentialResult {
+  saved_path: string;
+  token_serial: string;
+  user_name: string;
+}
+
+export interface ImportLicenseResult {
+  status: LicenseStatus;
+  expires_at: number | null;
+}

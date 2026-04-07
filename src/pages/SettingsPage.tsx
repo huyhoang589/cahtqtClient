@@ -1,6 +1,7 @@
 import { X } from "lucide-react";
 import TokenSection from "./Settings/TokenSection/TokenSection";
 import CommunicationSection from "./Settings/CommunicationSection";
+import LicenseSection from "./Settings/LicenseSection";
 import { useAppContext } from "../contexts/app-context";
 import { selectOutputDir } from "../lib/tauri-api";
 
@@ -76,6 +77,11 @@ export default function SettingsPage() {
 
       {/* Communication Certificate Configuration */}
       <CommunicationSection />
+
+      <div style={{ borderBottom: "1px solid var(--cahtqt-border-light)", marginBottom: 24, marginTop: 24 }} />
+
+      {/* License Management */}
+      <LicenseSection />
     </div>
   );
 }

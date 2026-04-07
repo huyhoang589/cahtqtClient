@@ -4,6 +4,7 @@ pub mod commands;
 pub mod db;
 pub mod etoken;
 pub mod htqt_ffi;
+pub mod license;
 pub mod models;
 
 use std::path::Path;
@@ -15,6 +16,7 @@ use tauri::Manager;
 
 use etoken::models::TokenLoginState;
 use htqt_ffi::HtqtLib;
+use license::error::LicenseInfo;
 
 /// Shared application state managed by Tauri
 pub struct AppState {
@@ -30,6 +32,8 @@ pub struct AppState {
     pub last_token_scan: Arc<Mutex<Option<etoken::models::TokenScanResult>>>,
     /// Verified token login state — holds PIN in Zeroizing<String> after successful login
     pub token_login: Arc<Mutex<TokenLoginState>>,
+    /// Cached license verification result — populated at startup
+    pub license_info: Arc<Mutex<LicenseInfo>>,
 }
 
 /// Create required DATA subdirectories under app_data_dir on startup (idempotent).
@@ -106,6 +110,26 @@ pub fn run() {
                 None
             };
 
+            // Run startup license check (best-effort — result cached in AppState)
+            let license_info = {
+                let pkcs11_path = tauri::async_runtime::block_on(async {
+                    crate::db::settings_repo::get_all_settings(&pool).await.ok()
+                })
+                .and_then(|rows| {
+                    let map: std::collections::HashMap<String, String> =
+                        rows.into_iter().map(|s| (s.key, s.value)).collect();
+                    let mode = map.get("pkcs11_mode").cloned().unwrap_or_else(|| "auto".to_string());
+                    if mode == "manual" {
+                        map.get("pkcs11_manual_path").cloned()
+                    } else {
+                        crate::etoken::library_detector::auto_detect_library(None).map(|info| info.path)
+                    }
+                })
+                .unwrap_or_default();
+
+                license::is_licensed(&pkcs11_path, &app_data_dir)
+            };
+
             app.manage(AppState {
                 db: pool,
                 htqt_lib: Arc::new(Mutex::new(htqt_lib)),
@@ -113,6 +137,7 @@ pub fn run() {
                 is_operation_running: Arc::new(AtomicBool::new(false)),
                 last_token_scan: Arc::new(Mutex::new(None)),
                 token_login: Arc::new(Mutex::new(TokenLoginState::default())),
+                license_info: Arc::new(Mutex::new(license_info)),
             });
 
             Ok(())
@@ -148,6 +173,10 @@ pub fn run() {
             commands::communication::save_communication_cert,
             commands::communication::clear_communication_cert,
             commands::logs::list_logs,
+            commands::license::check_license,
+            commands::license::get_license_info,
+            commands::license::export_machine_credential,
+            commands::license::import_license_file,
         ])
         .run(tauri::generate_context!())
         .expect("Error while running CAHTQT application");

@@ -36,6 +36,9 @@ uuid = { version = "1", features = ["v4"] }
 thiserror = "1"
 dirs = "5"
 chrono = { version = "0.4", features = ["clock"] }
+hex = "0.4"
+base64 = "0.22"
+sha2 = "0.10"
 
 [profile.dev]
 incremental = true

@@ -9,8 +9,12 @@ import type {
   DecryptResult,
   EncLog,
   EncryptResult,
+  ImportLicenseResult,
+  LicenseCheckResult,
+  LicenseInfo,
   LibraryInfo,
   LoginTokenResult,
+  MachineCredentialResult,
   Partner,
   PartnerMember,
   SenderCertExportResult,
@@ -169,6 +173,20 @@ export const saveCommunicationCert = (certPath: string) =>
 
 export const clearCommunicationCert = () =>
   invoke<void>("clear_communication_cert");
+
+// ---- License -----------------------------------------------------------------
+
+export const checkLicense = () =>
+  invoke<LicenseCheckResult>("check_license");
+
+export const getLicenseInfo = () =>
+  invoke<LicenseInfo>("get_license_info");
+
+export const exportMachineCredential = () =>
+  invoke<MachineCredentialResult>("export_machine_credential");
+
+export const importLicenseFile = (filePath: string) =>
+  invoke<ImportLicenseResult>("import_license_file", { filePath });
 
 // ---- Logs --------------------------------------------------------------------
 
