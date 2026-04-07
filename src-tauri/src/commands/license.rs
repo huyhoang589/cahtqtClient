@@ -23,8 +23,6 @@ pub struct LicenseCheckResult {
 #[derive(Debug, Serialize)]
 pub struct MachineCredentialResult {
     pub saved_path: String,
-    pub token_serial: String,
-    pub user_name: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -85,8 +83,9 @@ pub async fn export_machine_credential(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<MachineCredentialResult, String> {
-    // Collect hardware fingerprint (only hash exported — raw IDs stay on machine)
-    let machine_fp = machine::get_machine_fingerprint();
+    // Collect raw hardware IDs for server credential
+    let cpu_id = machine::get_cpu_id().unwrap_or_default();
+    let board_serial = machine::get_board_serial().unwrap_or_default();
 
     // Get PKCS#11 library path from settings
     let settings = crate::db::settings_repo::get_all_settings(&state.db)
@@ -99,7 +98,6 @@ pub async fn export_machine_credential(
     let pkcs11_path = if pkcs11_mode == "manual" {
         settings_map.get("pkcs11_manual_path").cloned().unwrap_or_default()
     } else {
-        // Auto-detect library path
         crate::etoken::library_detector::auto_detect_library(None)
             .map(|info| info.path)
             .unwrap_or_default()
@@ -109,21 +107,12 @@ pub async fn export_machine_credential(
         return Err("PKCS#11 library not found. Please configure in Settings.".to_string());
     }
 
-    // Initialize PKCS#11 and read token info
+    // Initialize PKCS#11 and read token serial
     let pkcs11 = crate::etoken::token_manager::initialize(&pkcs11_path)
         .map_err(|e| format!("PKCS#11 init failed: {}", e))?;
 
     let token_serial = license::token::get_token_serial(&pkcs11)
         .map_err(|e| format!("{}", e))?;
-
-    // Read CN from first certificate (public object, no PIN needed)
-    let (_, raw_slots) = crate::etoken::token_manager::get_all_slots(&pkcs11)?;
-    let user_name = if let Some(&slot) = raw_slots.first() {
-        let session = crate::etoken::token_manager::open_ro_session(&pkcs11, slot)?;
-        read_first_cert_cn(&session).unwrap_or_else(|| "Unknown".to_string())
-    } else {
-        "Unknown".to_string()
-    };
 
     // Resolve output directory
     let output_data_dir = settings_map
@@ -136,28 +125,29 @@ pub async fn export_machine_credential(
                 .unwrap_or_default()
         });
 
-    // Build credential JSON
-    let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S").to_string();
+    // Build credential JSON — exact server spec format
+    let now = chrono::Utc::now();
+    let timestamp = now.format("%Y%m%d_%H%M%S").to_string();
+    let registered_at = now.format("%Y-%m-%dT%H:%M:%SZ").to_string();
     let credential = serde_json::json!({
-        "machine_fingerprint": machine_fp,
         "token_serial": token_serial,
-        "user_name": user_name,
-        "exported_at": chrono::Utc::now().to_rfc3339(),
-        "app_version": env!("CARGO_PKG_VERSION"),
+        "cpu_id": cpu_id,
+        "board_serial": board_serial,
+        "registered_at": registered_at,
     });
 
     let filename = format!("machine_credential_{}.json", timestamp);
     let save_path = format!("{}/{}", output_data_dir.trim_end_matches(['/', '\\']), filename);
 
-    std::fs::write(&save_path, serde_json::to_string_pretty(&credential).unwrap())
+    let json_str = serde_json::to_string_pretty(&credential)
+        .map_err(|e| format!("Failed to serialize credential: {}", e))?;
+    std::fs::write(&save_path, json_str)
         .map_err(|e| format!("Failed to write credential file: {}", e))?;
 
     emit_app_log(&app, "success", &format!("Machine credential exported to {}", save_path));
 
     Ok(MachineCredentialResult {
         saved_path: save_path,
-        token_serial,
-        user_name,
     })
 }
 
@@ -227,30 +217,3 @@ pub async fn import_license_file(
     Ok(result)
 }
 
-/// Read CN from the first X.509 certificate on the token (public object).
-fn read_first_cert_cn(session: &cryptoki::session::Session) -> Option<String> {
-    use cryptoki::object::{Attribute, AttributeType, ObjectClass};
-
-    let template = vec![Attribute::Class(ObjectClass::CERTIFICATE)];
-    let objects = session.find_objects(&template).ok()?;
-    let obj = objects.first()?;
-
-    let attrs = session
-        .get_attributes(*obj, &[AttributeType::Value])
-        .ok()?;
-
-    for attr in attrs {
-        if let Attribute::Value(der) = attr {
-            if let Ok((_, cert)) = x509_parser::parse_x509_certificate(&der) {
-                let cn = cert
-                    .subject()
-                    .iter_common_name()
-                    .next()
-                    .and_then(|cn| cn.as_str().ok())
-                    .map(|s| s.to_string());
-                return cn;
-            }
-        }
-    }
-    None
-}

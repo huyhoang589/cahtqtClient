@@ -239,8 +239,6 @@ export interface LicenseCheckResult {
 
 export interface MachineCredentialResult {
   saved_path: string;
-  token_serial: string;
-  user_name: string;
 }
 
 export interface ImportLicenseResult {
