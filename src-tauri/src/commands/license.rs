@@ -3,6 +3,7 @@ use tauri::{AppHandle, Manager, State};
 
 use crate::{
     app_log::emit_app_log,
+    etoken::{certificate_reader, token_manager},
     license::{
         self,
         error::{LicenseInfo, LicenseStatus},
@@ -107,12 +108,30 @@ pub async fn export_machine_credential(
         return Err("PKCS#11 library not found. Please configure in Settings.".to_string());
     }
 
-    // Initialize PKCS#11 and read token serial
-    let pkcs11 = crate::etoken::token_manager::initialize(&pkcs11_path)
+    // Initialize PKCS#11 and get slot once — reuse for token serial + cert CN
+    let pkcs11 = token_manager::initialize(&pkcs11_path)
         .map_err(|e| format!("PKCS#11 init failed: {}", e))?;
 
-    let token_serial = license::token::get_token_serial(&pkcs11)
-        .map_err(|e| format!("{}", e))?;
+    let (_slot_infos, raw_slots) = token_manager::get_all_slots(&pkcs11)
+        .map_err(|e| format!("Cannot enumerate slots: {}", e))?;
+    let slot = raw_slots.first().copied()
+        .ok_or_else(|| "No token inserted. Please insert your token.".to_string())?;
+
+    // Read token serial from the resolved slot
+    let token_info = pkcs11.get_token_info(slot)
+        .map_err(|e| format!("Cannot read token info: {}", e))?;
+    let token_serial = token_info.serial_number().trim().to_string();
+
+    // Read user_name from first non-CA certificate's CN
+    let user_name = {
+        let session = token_manager::open_ro_session(&pkcs11, slot)
+            .map_err(|e| format!("Cannot open session: {}", e))?;
+        let certs = certificate_reader::read_all_certificates(&session, 0)
+            .unwrap_or_default();
+        certs.first()
+            .map(|c| c.subject_cn.clone())
+            .unwrap_or_default()
+    };
 
     // Resolve output directory
     let output_data_dir = settings_map
@@ -133,6 +152,7 @@ pub async fn export_machine_credential(
         "token_serial": token_serial,
         "cpu_id": cpu_id,
         "board_serial": board_serial,
+        "user_name": user_name,
         "registered_at": registered_at,
     });
 
