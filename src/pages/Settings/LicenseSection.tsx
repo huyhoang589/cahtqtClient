@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import {
+  getCommunicationCert,
   getLicenseInfo,
   exportMachineCredential,
   importLicenseFile,
   selectFiles,
 } from "../../lib/tauri-api";
+import { useAppContext } from "../../contexts/app-context";
 import type { LicenseInfo, LicenseStatus } from "../../types";
 
 /** Status badge color + label mapping */
@@ -20,13 +22,18 @@ const STATUS_CONFIG: Record<LicenseStatus, { color: string; label: string }> = {
 };
 
 export default function LicenseSection() {
+  const { license } = useAppContext();
   const [info, setInfo] = useState<LicenseInfo | null>(null);
+  const [hasCommunicationCert, setHasCommunicationCert] = useState(true); // default true to avoid flash
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; msg: string } | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Load license info on mount
+  // Load license info + check comm cert on mount
   useEffect(() => {
     getLicenseInfo().then(setInfo).catch(() => {});
+    getCommunicationCert()
+      .then((cert) => setHasCommunicationCert(cert !== null))
+      .catch(() => setHasCommunicationCert(false));
   }, []);
 
   // Auto-clear feedback after 4s
@@ -56,6 +63,8 @@ export default function LicenseSection() {
       const result = await importLicenseFile(files[0]);
       setInfo({ status: result.status, expires_at: result.expires_at, product: info?.product ?? null });
       setFeedback({ type: "success", msg: "License imported successfully" });
+      // Sync license context so protected routes unlock immediately
+      await license.recheckLicense();
     } catch (e) {
       setFeedback({ type: "error", msg: `Import failed: ${e}` });
     } finally {
@@ -76,6 +85,20 @@ export default function LicenseSection() {
       <div style={{ fontSize: "var(--cahtqt-font-size-sm)", color: "var(--cahtqt-text-muted)" }}>
         Machine license status and management.
       </div>
+
+      {/* Conditional banner — only when comm cert is not configured */}
+      {!hasCommunicationCert && (
+        <div style={{
+          padding: "8px 12px",
+          borderRadius: "var(--cahtqt-radius-md)",
+          border: "1px solid var(--cahtqt-color-info, #3b82f6)",
+          background: "rgba(59,130,246,0.08)",
+          fontSize: "var(--cahtqt-font-size-sm)",
+          color: "var(--cahtqt-text-on-light)",
+        }}>
+          ℹ Communication certificate must be configured before importing a license file.
+        </div>
+      )}
 
       {/* Status card */}
       {statusCfg && (

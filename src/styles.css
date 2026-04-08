@@ -368,6 +368,11 @@ tr:hover td { background: var(--cahtqt-bg-table-hover); }
   50%       { opacity: 0.35; }
 }
 
+@keyframes pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%      { transform: scale(1.4); opacity: 0.5; }
+}
+
 /* ---- Scrollbars ---- */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
