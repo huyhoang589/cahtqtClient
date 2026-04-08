@@ -1,0 +1,6 @@
+1. App start normally
+2. Incase License not found or License Error, 
+- only SETTING PAGE fully acceptable, ENCRYPT PAGE and DECRYPT PAGE not acceptable
+- When user click on Encrypt / Decrypt side panel: promt License Not Found. This application is not licensed for this machine. Use the button below to Export Machine Credential then contact your admin department -> Only use button Export Machine Credential. (Import License is the function in SETTING PAGE)
+3. SETTING PAGE
+- Inform message "Communication certificate must configured for licensing" so user will know Server Certificate has to be configured before importing license.dat
