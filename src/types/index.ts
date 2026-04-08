@@ -224,7 +224,8 @@ export type CertExpiryStatus = "valid" | "expiring_soon" | "expired";
 
 export type LicenseStatus =
   | "valid" | "expired" | "not_found" | "no_token"
-  | "token_mismatch" | "machine_mismatch" | "corrupted";
+  | "token_mismatch" | "machine_mismatch" | "corrupted"
+  | "no_communication_cert";
 
 export interface LicenseInfo {
   status: LicenseStatus;

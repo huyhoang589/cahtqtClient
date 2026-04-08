@@ -12,6 +12,7 @@ pub enum LicenseStatus {
     TokenMismatch,
     MachineMismatch,
     Corrupted,
+    NoCommunicationCert,
 }
 
 /// License info returned to frontend — no sensitive data exposed
@@ -43,6 +44,7 @@ pub enum LicenseError {
     Expired,
     NotLicensed,
     Corrupted(String),
+    NoCommunicationCert,
 }
 
 impl fmt::Display for LicenseError {
@@ -55,6 +57,7 @@ impl fmt::Display for LicenseError {
             Self::Expired => write!(f, "Your license has expired. Please contact IT for renewal."),
             Self::NotLicensed => write!(f, "No valid license found. Please contact your IT department."),
             Self::Corrupted(msg) => write!(f, "License file is invalid or has been tampered with. {}", msg),
+            Self::NoCommunicationCert => write!(f, "Communication certificate not configured. Please import the server certificate in Settings."),
         }
     }
 }
@@ -70,6 +73,7 @@ impl LicenseError {
             Self::Expired => LicenseStatus::Expired,
             Self::NotLicensed => LicenseStatus::NotFound,
             Self::Corrupted(_) => LicenseStatus::Corrupted,
+            Self::NoCommunicationCert => LicenseStatus::NoCommunicationCert,
         }
     }
 }

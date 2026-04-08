@@ -60,6 +60,7 @@ pub async fn check_license(_state: State<'_, AppState>) -> Result<LicenseCheckRe
             LicenseStatus::TokenMismatch => ("error".to_string(), Some("The inserted token does not match this machine license.".to_string())),
             LicenseStatus::MachineMismatch => ("error".to_string(), Some("This license is not valid on this machine. Please contact IT.".to_string())),
             LicenseStatus::Corrupted => ("error".to_string(), Some("License file is invalid or has been tampered with. Please contact IT.".to_string())),
+            LicenseStatus::NoCommunicationCert => ("error".to_string(), Some("Communication certificate not configured. Please import the server certificate in Settings.".to_string())),
         };
         Ok(LicenseCheckResult {
             state: state_str,
@@ -147,11 +148,11 @@ pub async fn export_machine_credential(
     // Build credential JSON — exact server spec format
     let now = chrono::Utc::now();
     let timestamp = now.format("%Y%m%d_%H%M%S").to_string();
-    let registered_at = now.format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let registered_at = now.format("%Y-%m-%d").to_string();
     let credential = serde_json::json!({
-        "token_serial": token_serial,
-        "cpu_id": cpu_id,
         "board_serial": board_serial,
+        "cpu_id": cpu_id,
+        "token_serial": token_serial,
         "user_name": user_name,
         "registered_at": registered_at,
     });
@@ -223,7 +224,12 @@ pub async fn import_license_file(
             .unwrap_or_default()
     };
 
-    let new_info = license::is_licensed(&pkcs11_path, &app_data_dir);
+    let comm_cert_path = crate::db::settings_repo::get_setting(&state.db, "communication_cert_path")
+        .await
+        .ok()
+        .flatten();
+
+    let new_info = license::is_licensed(&pkcs11_path, &app_data_dir, comm_cert_path.as_deref());
     let result = ImportLicenseResult {
         status: new_info.status.clone(),
         expires_at: new_info.expires_at,

@@ -127,7 +127,11 @@ pub fn run() {
                 })
                 .unwrap_or_default();
 
-                license::is_licensed(&pkcs11_path, &app_data_dir)
+                let comm_cert_path = tauri::async_runtime::block_on(async {
+                    crate::db::settings_repo::get_setting(&pool, "communication_cert_path").await.ok().flatten()
+                });
+
+                license::is_licensed(&pkcs11_path, &app_data_dir, comm_cert_path.as_deref())
             };
 
             app.manage(AppState {
