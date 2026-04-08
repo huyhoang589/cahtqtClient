@@ -22,8 +22,7 @@ export function useDecrypt() {
     });
 
     try {
-      // Partner name not used in client edition — pass empty string
-      const res = await decryptBatch(selectedFiles, "", outputDir);
+      const res = await decryptBatch(selectedFiles, outputDir);
       setResult(res);
     } catch (e) {
       setResult({ total: 0, success_count: 0, error_count: 1, errors: [String(e)] });

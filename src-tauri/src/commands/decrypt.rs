@@ -36,13 +36,12 @@ pub struct DecryptResult {
     pub errors: Vec<String>,
 }
 
-/// Decrypt M .sf files using decHTQT_v2 with callback-based crypto.
-/// recipient_id sourced from AppState.token_login.cert_cn (no frontend param needed).
+/// Decrypt M .sf1 files using decrypt_one_sfv1 with callback-based crypto.
+/// Recipient matched via own_cert_der fingerprint — no recipient_id needed.
 #[tauri::command]
 pub async fn decrypt_batch(
     app: AppHandle,
     file_paths: Vec<String>,
-    partner_name: String,
     output_dir: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<DecryptResult, String> {
@@ -53,7 +52,7 @@ pub async fn decrypt_batch(
     {
         return Err("Another operation is already running".to_string());
     }
-    let result = run_decrypt_batch(&app, &file_paths, &partner_name, output_dir.as_deref(), &state).await;
+    let result = run_decrypt_batch(&app, &file_paths, output_dir.as_deref(), &state).await;
     state.is_operation_running.store(false, Ordering::SeqCst);
     result
 }
@@ -61,27 +60,24 @@ pub async fn decrypt_batch(
 async fn run_decrypt_batch(
     app: &AppHandle,
     file_paths: &[String],
-    partner_name: &str,
     output_dir_override: Option<&str>,
     state: &State<'_, AppState>,
 ) -> Result<DecryptResult, String> {
-    // Read and validate token login state; get recipient_id from cert_cn
-    let (pkcs11_lib, slot_id, pin_str, recipient_id) = {
+    // Read and validate token login state
+    let (pkcs11_lib, slot_id, pin_str) = {
         let login = state.token_login.lock().map_err(|e| format!("Lock poisoned: {e}"))?;
         if login.status != TokenStatus::LoggedIn {
             return Err("Token not logged in — login via Settings first".to_string());
         }
         let pin = login.get_pin().ok_or("PIN not available — re-login required")?.to_string();
-        let cert_cn = login.cert_cn.clone().ok_or("Token cert_cn not available — re-login required")?;
         (
             login.pkcs11_lib_path.clone().unwrap_or_default(),
             login.slot_id.unwrap_or(0),
             pin,
-            cert_cn,
         )
     };
 
-    // Get sender's own cert DER (for SF v1 backward compat)
+    // Get caller's own cert DER (required for SF v1 fingerprint matching)
     let own_cert_der: Vec<u8> = {
         let scan = state.last_token_scan.lock().map_err(|e| format!("Lock poisoned: {e}"))?;
         scan.as_ref()
@@ -90,14 +86,10 @@ async fn run_decrypt_batch(
             .unwrap_or_default()
     };
 
-    // Resolve output directory: use override if provided, else output_data_dir\SF\DECRYPT\{partner}
+    // Resolve output directory: use override if provided, else output_data_dir\SF\DECRYPT
     let output_dir_str = if let Some(dir) = output_dir_override {
         dir.to_string()
     } else {
-        let safe_name = Path::new(partner_name)
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_else(|| "unknown".to_string());
         let base = settings_repo::get_setting(&state.db, "output_data_dir")
             .await
             .ok()
@@ -108,14 +100,14 @@ async fn run_decrypt_batch(
                     .map(|p| format!("{}\\Desktop", p))
                     .unwrap_or_default()
             });
-        format!("{}\\SF\\DECRYPT\\{}", base.trim_end_matches(['/', '\\']), safe_name)
+        format!("{}\\SF\\DECRYPT", base.trim_end_matches(['/', '\\']))
     };
 
     std::fs::create_dir_all(&output_dir_str)
         .map_err(|e| format!("Cannot create output directory: {}", e))?;
 
     let total = file_paths.len();
-    emit_app_log(app, "info", &format!("Starting decryption: {} file(s) (recipient: {})", total, recipient_id));
+    emit_app_log(app, "info", &format!("Starting decryption: {} file(s)", total));
 
     // Open PKCS#11 session once for all files (reuse session + callbacks)
     let htqt_lib_arc = state.htqt_lib.clone();
@@ -123,11 +115,10 @@ async fn run_decrypt_batch(
     let own_cert_der_clone = own_cert_der.clone();
     let file_paths_owned = file_paths.to_vec();
     let output_dir_str_clone = output_dir_str.clone();
-    let recipient_id_clone = recipient_id.clone();
 
     // Run all decryption synchronously in spawn_blocking
-    let dec_results = tokio::task::spawn_blocking(move || -> Result<Vec<(String, String, Result<(), (i32, String)>)>, String> {
-        // Open PKCS#11 session for decrypt operations
+    // Each result: (input_path, output_path_from_dll, Result<Ok, (code, detail)>)
+    let dec_results = tokio::task::spawn_blocking(move || -> Result<Vec<(String, Result<String, (i32, String)>)>, String> {
         let ctx = open_token_session(
             &pkcs11_lib,
             slot_id,
@@ -140,12 +131,9 @@ async fn run_decrypt_batch(
         let ctx_box = Box::new(ctx);
         let user_ctx_ptr = &*ctx_box as *const _ as *mut c_void;
 
-        // For decrypt: sign_fn + rsa_enc_cert_fn are NOT required (null/None)
         let cbs = CryptoCallbacksV2 {
-            sign_fn: None,
-            rsa_enc_cert_fn: None,
+            sign_fn: None, // not needed for decrypt
             rsa_dec_fn: Some(callbacks::cb_rsa_oaep_decrypt),
-            verify_fn: Some(callbacks::cb_rsa_pss_verify),
             progress_fn: None, // decrypt does not use progress callback
             user_ctx: user_ctx_ptr,
             own_cert_der: if own_cert_der_clone.is_empty() { ptr::null() } else { own_cert_der_clone.as_ptr() },
@@ -158,15 +146,8 @@ async fn run_decrypt_batch(
 
         let mut results = Vec::with_capacity(file_paths_owned.len());
         for file_path in &file_paths_owned {
-            // Strip .sf extension — DLL appends original extension from SF header
-            let stem = Path::new(file_path)
-                .file_stem()
-                .map(|s| s.to_string_lossy().to_string())
-                .unwrap_or_else(|| "output".to_string());
-            let dst_str = format!("{}/{}", output_dir_str_clone, stem);
-
-            let dec_result = lib.dec_v2(file_path, &dst_str, &recipient_id_clone, &cbs);
-            results.push((file_path.clone(), dst_str, dec_result));
+            let dec_result = lib.decrypt_one_sfv1(file_path, &output_dir_str_clone, &cbs, 0);
+            results.push((file_path.clone(), dec_result));
         }
 
         drop(guard);
@@ -182,17 +163,17 @@ async fn run_decrypt_batch(
     let mut error_count = 0usize;
     let mut errors: Vec<String> = Vec::new();
 
-    for (i, (file_path, dst_str, result)) in dec_results.iter().enumerate() {
+    for (i, (file_path, result)) in dec_results.iter().enumerate() {
         let current = i + 1;
         let file_name = Path::new(file_path)
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| file_path.clone());
 
-        let (status_str, error_msg) = match result {
-            Ok(()) => {
+        let (status_str, error_msg, out_path) = match result {
+            Ok(output_path) => {
                 success_count += 1;
-                ("success".to_string(), None)
+                ("success".to_string(), None, output_path.as_str())
             }
             Err((code, detail)) => {
                 error_count += 1;
@@ -203,7 +184,7 @@ async fn run_decrypt_batch(
                     format!("{} — {}", base, detail)
                 };
                 errors.push(format!("{}: {}", file_name, error_str));
-                ("error".to_string(), Some(error_str))
+                ("error".to_string(), Some(error_str), "")
             }
         };
 
@@ -222,7 +203,7 @@ async fn run_decrypt_batch(
             &state.db,
             "DECRYPT",
             file_path,
-            dst_str,
+            out_path,
             None,
             &status_str,
             error_msg.as_deref(),

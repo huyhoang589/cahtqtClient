@@ -150,10 +150,9 @@ export const encryptBatch = (
 
 export const decryptBatch = (
   filePaths: string[],
-  partnerName: string,
   outputDir?: string | null,
 ) =>
-  invoke<DecryptResult>("decrypt_batch", { filePaths, partnerName, outputDir: outputDir ?? null });
+  invoke<DecryptResult>("decrypt_batch", { filePaths, outputDir: outputDir ?? null });
 
 export const setCommunication = (
   recipientCertPath: string,

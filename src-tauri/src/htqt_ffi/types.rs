@@ -11,34 +11,12 @@ pub type FnRsaPssSign = unsafe extern "C" fn(
     user_ctx: *mut c_void,
 ) -> c_int;
 
-/// RSA-OAEP-SHA256 encrypt plaintext using public key from cert_der.
-pub type FnRsaOaepEncryptForCert = unsafe extern "C" fn(
-    plaintext: *const u8,
-    plaintext_len: c_uint,
-    cert_der: *const u8,
-    cert_der_len: c_uint,
-    ciphertext_out: *mut u8,
-    ciphertext_len: *mut c_uint,
-    user_ctx: *mut c_void,
-) -> c_int;
-
 /// RSA-OAEP-SHA256 decrypt ciphertext with caller's private key.
 pub type FnRsaOaepDecrypt = unsafe extern "C" fn(
     ciphertext: *const u8,
     ciphertext_len: c_uint,
     plaintext_out: *mut u8,
     plaintext_len: *mut c_uint,
-    user_ctx: *mut c_void,
-) -> c_int;
-
-/// RSA-PSS-SHA256 verify signature against digest using sender's cert public key.
-pub type FnRsaPssVerify = unsafe extern "C" fn(
-    digest: *const u8,
-    digest_len: c_uint,
-    sig: *const u8,
-    sig_len: c_uint,
-    sender_cert_der: *const u8,
-    sender_cert_der_len: c_uint,
     user_ctx: *mut c_void,
 ) -> c_int;
 
@@ -63,12 +41,14 @@ pub type FnEncHTQTMulti = unsafe extern "C" fn(
 ) -> c_int;
 
 pub type FnDecHTQTV2 = unsafe extern "C" fn(
-    sf_path: *const c_char,
-    output_path: *const c_char,
-    recipient_id: *const c_char,
+    sf1_path: *const c_char,
+    output_dir: *const c_char,
     cbs: *const CryptoCallbacksV2,
-    error_msg: *mut c_char,
-    error_len: c_int,
+    flags: u32,
+    out_path_buf: *mut c_char,
+    out_path_buf_len: c_int,
+    err_buf: *mut c_char,
+    err_len: c_int,
 ) -> c_int;
 
 pub type FnGetError = unsafe extern "C" fn() -> c_int;
@@ -79,13 +59,11 @@ pub type FnGetError = unsafe extern "C" fn() -> c_int;
 #[repr(C)]
 pub struct CryptoCallbacksV2 {
     pub sign_fn: Option<FnRsaPssSign>,
-    pub rsa_enc_cert_fn: Option<FnRsaOaepEncryptForCert>,
     pub rsa_dec_fn: Option<FnRsaOaepDecrypt>,
-    pub verify_fn: Option<FnRsaPssVerify>,
     pub progress_fn: Option<FnProgressCallback>,
     pub user_ctx: *mut c_void,
-    pub own_cert_der: *const u8,        // for SF v1 compat; NULL if not available
-    pub own_cert_der_len: c_uint,       // 0 = skip SF v1 fingerprint matching
+    pub own_cert_der: *const u8,        // required: caller's own DER certificate
+    pub own_cert_der_len: c_uint,       // length of own_cert_der in bytes
     pub reserved: [*mut c_void; 3],     // must be NULL
 }
 
@@ -98,7 +76,7 @@ unsafe impl Sync for CryptoCallbacksV2 {}
 #[repr(C)]
 pub struct FileEntry {
     pub input_path: *const c_char, // UTF-8 path to plaintext file
-    pub file_id: *const c_char,    // used in output filename: {file_id}-{recipient_id}.sf
+    pub file_id: *const c_char,    // used in output filename: {file_id}.sf1
 }
 
 unsafe impl Send for FileEntry {}

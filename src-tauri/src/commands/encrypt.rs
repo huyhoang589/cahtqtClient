@@ -158,7 +158,7 @@ async fn run_encrypt_batch(
 
     // Use Windows short path so DLL's ANSI file APIs can resolve Unicode directory names
     let output_dir_str = to_short_path(&output_dir_string);
-    // ISO date suffix: -{YYYYMMDD} — DLL uses file_id as output filename base, appends .sf
+    // ISO date suffix: -{YYYYMMDD} — DLL uses file_id as output filename base, appends .sf1
     let date_suffix = chrono::Local::now().format("-%Y%m%d").to_string();
 
     // Pre-compute file_ids ({stem}-{YYYYMMDD}) — DLL uses this in output filename
@@ -252,9 +252,7 @@ async fn run_encrypt_batch(
 
         let cbs = CryptoCallbacksV2 {
             sign_fn: Some(callbacks::cb_rsa_pss_sign),
-            rsa_enc_cert_fn: Some(callbacks::cb_rsa_oaep_enc_cert),
-            rsa_dec_fn: Some(callbacks::cb_rsa_oaep_decrypt),
-            verify_fn: Some(callbacks::cb_rsa_pss_verify),
+            rsa_dec_fn: None, // not needed for encrypt
             progress_fn: Some(callbacks::cb_progress),
             user_ctx: user_ctx_ptr,
             own_cert_der: if own_cert_der.is_empty() { ptr::null() } else { own_cert_der.as_ptr() },
@@ -262,7 +260,8 @@ async fn run_encrypt_batch(
             reserved: [ptr::null_mut(); 3],
         };
 
-        let mut batch_results: Vec<BatchResult> = (0..total_pairs)
+        // SF v1: one output .sf1 per file (all recipients embedded), capacity = file_count
+        let mut batch_results: Vec<BatchResult> = (0..file_count)
             .map(|_| BatchResult::default())
             .collect();
 
@@ -303,15 +302,14 @@ async fn run_encrypt_batch(
         }
     };
 
-    // Collect results per (file, recipient) pair, emit progress events, and log to DB
+    // Collect results per file (SF v1: one .sf1 per input file), emit progress, log to DB
     let mut success_count = 0usize;
     let mut error_count = 0usize;
     let mut errors: Vec<String> = Vec::new();
     let total_files = src_paths.len();
 
-    for (pair_idx, result) in batch_results.iter().enumerate() {
+    for (file_idx, result) in batch_results.iter().enumerate() {
         let fi = result.file_index as usize;
-        let ri = result.recipient_index as usize;
         let file_path_str = src_paths.get(fi).map(String::as_str).unwrap_or("?");
         let output_path = {
             let buf = &result.output_path;
@@ -347,14 +345,13 @@ async fn run_encrypt_batch(
             } else {
                 format!("[{}] {}: {} — {}", result.status, name, message, detail)
             };
-            let recip_id = recipient_id_strings.get(ri).map(String::as_str).unwrap_or("?");
-            errors.push(format!("{}+{}: {}", file_name, recip_id, error_str));
+            errors.push(format!("{}: {}", file_name, error_str));
             ("error".to_string(), Some(error_str))
         };
 
         // Emit per-file progress event for UI status tracking
         let _ = app.emit("encrypt-progress", EncryptProgress {
-            current: pair_idx + 1,
+            current: file_idx + 1,
             total: total_files,
             file_name: file_name.clone(),
             file_path: file_path_str.to_string(),

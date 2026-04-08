@@ -1,12 +1,11 @@
-<<<<<<< HEAD
 # CAHTQT — PKI Encryption Desktop App
 
 A desktop application for M×N batch encryption using Public Key Infrastructure (PKI) cryptography. Encrypt files for multiple recipients in a single operation and decrypt received files using PKCS#11 tokens (smart cards, HSMs).
 
 ## Features
 
-- **Batch Encrypt** — Select M files × N recipients → produce M×N encrypted files in one operation
-- **Decrypt** — Decrypt received files via PKCS#11 token + PIN
+- **Batch Encrypt** — Select M files × N recipients → produce one .sf1 per file (all recipients embedded)
+- **Decrypt** — Decrypt .sf1 files via PKCS#11 token + PIN (cert fingerprint matching)
 - **Recipient Groups** — Organize recipients with X.509 certificate management
 - **PKCS#11 Integration** — Smart card / HSM token enumeration and certificate listing
 - **Settings** — Configure crypto DLL path, PKCS#11 library, output directory
@@ -17,7 +16,7 @@ A desktop application for M×N batch encryption using Public Key Infrastructure 
 |-------|-----------|
 | UI | React 18 + TypeScript |
 | Desktop | Tauri v2 (Rust) |
-| Crypto | FFI bridge → `crypto_dll.dll` |
+| Crypto | FFI bridge → `htqt_crypto.dll` |
 | Database | SQLite (via sqlx) |
 | Build | Vite + Cargo |
 
@@ -27,7 +26,7 @@ A desktop application for M×N batch encryption using Public Key Infrastructure 
 - [Rust](https://rustup.rs/) (stable)
 - [Tauri CLI v2](https://tauri.app/start/prerequisites/)
 - Windows 10/11 (native target)
-- `crypto_dll.dll` — place in the same directory as the built executable
+- `htqt_crypto.dll` — place in the same directory as the built executable
 
 ## Getting Started
 
@@ -55,8 +54,8 @@ src/                  # React frontend
 
 src-tauri/src/        # Rust backend
 ├── lib.rs            # App state + Tauri setup
-├── dll_wrapper.rs    # FFI bridge to crypto DLL
-├── pkcs11_service.rs # PKCS#11 token integration
+├── htqt_ffi/         # FFI bridge to htqt_crypto DLL
+├── etoken/           # PKCS#11 token integration
 ├── cert_parser.rs    # X.509 certificate parsing
 └── models.rs         # Shared data models
 ```
@@ -64,6 +63,3 @@ src-tauri/src/        # Rust backend
 ## License
 
 Private — all rights reserved.
-=======
-# cahtqtClient
->>>>>>> 6075aa7abfde311ac2a3cbd1a4794131bca377b1

@@ -5,12 +5,12 @@ use libloading::{os::windows::Library as WinLib, Library};
 use super::types::*;
 use super::DLL_LOCK;
 
-/// htqt_crypto v2 DLL wrapper — resolves 3 symbols: encHTQT_multi, decHTQT_v2, HTQT_GetError.
+/// htqt_crypto DLL wrapper — resolves 3 symbols: encHTQT_sf_multi, decrypt_one_sfv1, HTQT_GetError.
 pub struct HtqtLib {
     #[allow(dead_code)]
     lib: Library, // kept alive so typed fn pointers remain valid
     enc_multi_fn: FnEncHTQTMulti,
-    dec_v2_fn: FnDecHTQTV2,
+    dec_sfv1_fn: FnDecHTQTV2,
     #[allow(dead_code)]
     get_error_fn: FnGetError,
 }
@@ -33,13 +33,13 @@ impl HtqtLib {
         };
 
         let enc_multi_fn: FnEncHTQTMulti = unsafe {
-            *lib.get::<FnEncHTQTMulti>(b"encHTQT_multi\0")
-                .map_err(|_| "Symbol 'encHTQT_multi' not found in htqt_crypto.dll".to_string())?
+            *lib.get::<FnEncHTQTMulti>(b"encHTQT_sf_multi\0")
+                .map_err(|_| "Symbol 'encHTQT_sf_multi' not found in htqt_crypto.dll".to_string())?
         };
 
-        let dec_v2_fn: FnDecHTQTV2 = unsafe {
-            *lib.get::<FnDecHTQTV2>(b"decHTQT_v2\0")
-                .map_err(|_| "Symbol 'decHTQT_v2' not found in htqt_crypto.dll".to_string())?
+        let dec_sfv1_fn: FnDecHTQTV2 = unsafe {
+            *lib.get::<FnDecHTQTV2>(b"decrypt_one_sfv1\0")
+                .map_err(|_| "Symbol 'decrypt_one_sfv1' not found in htqt_crypto.dll".to_string())?
         };
 
         let get_error_fn: FnGetError = unsafe {
@@ -47,11 +47,11 @@ impl HtqtLib {
                 .map_err(|_| "Symbol 'HTQT_GetError' not found in htqt_crypto.dll".to_string())?
         };
 
-        Ok(HtqtLib { lib, enc_multi_fn, dec_v2_fn, get_error_fn })
+        Ok(HtqtLib { lib, enc_multi_fn, dec_sfv1_fn, get_error_fn })
     }
 
-    /// Batch encrypt M files × N recipients via encHTQT_multi.
-    /// results slice must have capacity >= file_count * recipient_count.
+    /// Batch encrypt M files × N recipients via encHTQT_sf_multi.
+    /// results slice must have capacity >= file_count (one .sf1 per input file).
     /// Returns Ok(rc): 0 = all success, >0 = partial failures in results.
     pub fn enc_multi(
         &self,
@@ -76,24 +76,33 @@ impl HtqtLib {
         }
     }
 
-    /// Decrypt a single SF file via decHTQT_v2.
-    /// Returns Err((rc, detail)) on failure so callers can format the error code for display.
-    pub fn dec_v2(
+    /// Decrypt a single SF v1 (.sf1) file via decrypt_one_sfv1.
+    /// On success returns Ok(output_path). On failure returns Err((rc, detail)).
+    pub fn decrypt_one_sfv1(
         &self,
-        sf_path: &str,
-        output_path: &str,
-        recipient_id: &str,
+        sf1_path: &str,
+        output_dir: &str,
         cbs: &CryptoCallbacksV2,
-    ) -> Result<(), (i32, String)> {
-        let sf = CString::new(sf_path).map_err(|e| (-1, e.to_string()))?;
-        let out = CString::new(output_path).map_err(|e| (-1, e.to_string()))?;
-        let rid = CString::new(recipient_id).map_err(|e| (-1, e.to_string()))?;
+        flags: u32,
+    ) -> Result<String, (i32, String)> {
+        let sf = CString::new(sf1_path).map_err(|e| (-1, e.to_string()))?;
+        let out = CString::new(output_dir).map_err(|e| (-1, e.to_string()))?;
+        let mut out_path_buf = [0i8; 512];
         let mut err_buf = [0i8; 512];
 
         let _guard = DLL_LOCK.lock().map_err(|_| (-1, "DLL_LOCK poisoned".to_string()))?;
 
         let rc = unsafe {
-            (self.dec_v2_fn)(sf.as_ptr(), out.as_ptr(), rid.as_ptr(), cbs, err_buf.as_mut_ptr(), 512)
+            (self.dec_sfv1_fn)(
+                sf.as_ptr(),
+                out.as_ptr(),
+                cbs,
+                flags,
+                out_path_buf.as_mut_ptr(),
+                512,
+                err_buf.as_mut_ptr(),
+                512,
+            )
         };
 
         if rc != 0 {
@@ -102,7 +111,10 @@ impl HtqtLib {
                 .to_string();
             Err((rc, detail))
         } else {
-            Ok(())
+            let out_path = unsafe { std::ffi::CStr::from_ptr(out_path_buf.as_ptr()) }
+                .to_string_lossy()
+                .to_string();
+            Ok(out_path)
         }
     }
 }
