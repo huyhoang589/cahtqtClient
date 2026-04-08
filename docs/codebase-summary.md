@@ -1,6 +1,6 @@
 # Codebase Summary
 
-**Last Updated:** 2026-04-07  
+**Last Updated:** 2026-04-08  
 **Repository:** CAHTQT Client (Tauri Desktop App)  
 **Language:** Rust (backend) + TypeScript (frontend)  
 **Total Files:** 50  
@@ -48,8 +48,8 @@ cahtqt-client/
 │   │   ├── index.ts
 │   │   └── ...
 │   ├── components/                     # React components
-│   │   ├── LicenseGate.tsx             # License check gate
-│   │   ├── LicenseSection.tsx          # Settings license UI
+│   │   ├── license-required.tsx        # Per-route guard (wraps protected routes)
+│   │   ├── license-not-found-page.tsx  # License error/prompt UI
 │   │   └── ...
 │   ├── commands/                       # Tauri command wrappers
 │   │   ├── index.ts
@@ -155,21 +155,22 @@ is_licensed(pkcs11_path, app_data_dir, comm_cert_path)
 
 ### Request Flow
 ```
-Frontend
+Frontend Route Mount
+  ↓
+LicenseRequired component wraps protected route (Encrypt/Decrypt/Partners)
   ↓
 invoke("check_license")
   ↓
 Tauri command: check_license()
-  ├─ In debug: Return "ok" (bypass)
-  └─ In release:
-       ├─ Read cached LicenseInfo from AppState
-       ├─ Map status to response
-       └─ Return to frontend
+  └─ Read cached LicenseInfo from AppState
+  └─ Return status to frontend
   ↓
-Frontend: LicenseGate routes based on status
-  ├─ Valid → Show app
-  ├─ NoToken / NotFound → Show message
-  └─ Error → Show error page
+Frontend: LicenseRequired renders based on status
+  ├─ loading → Show "Verifying license…"
+  ├─ ok → Render route children
+  └─ error/not_found/etc → Show LicenseNotFoundPage
+  
+Settings route: Always accessible (no license blocking)
 ```
 
 ### Initialization (Startup Hook in lib.rs)

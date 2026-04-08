@@ -8,6 +8,14 @@ All notable changes to CAHTQT Client are documented here, following semantic ver
 
 ### Added
 
+- **License Validate at Startup Feature**
+  - Per-route `LicenseRequired` guard component replaces full-app LicenseGate gate
+  - Settings page now always accessible (no license blocking)
+  - License state added to AppContext via `useLicenseStatus` hook
+  - New component: `license-required.tsx` — route guard wrapper
+  - New component: `license-not-found-page.tsx` — license error/prompt UI
+  - `recheckLicense()` callback in license context for manual re-verification after license import
+
 - **License Signature Verification Refactor**
   - `extract_public_key_from_cert()` function for runtime RSA public key extraction from X.509 certificates
   - Support for both PEM (Base64-encoded) and DER (binary) certificate formats with auto-detection
@@ -15,6 +23,13 @@ All notable changes to CAHTQT Client are documented here, following semantic ver
   - `NoCommunicationCert` status variant in `LicenseStatus` enum for frontend display
 
 ### Changed
+
+- **Frontend License Verification Architecture**
+  - Replaced full-app LicenseGate component with per-route `LicenseRequired` guard
+  - Protected routes (Encrypt, Decrypt, Partners) now wrapped individually with license check
+  - Settings page no longer blocked by license status (always accessible for configuration)
+  - License state moved to AppContext (useLicenseStatus hook) for global availability
+  - Added "loading" state during license verification to prevent UI flash
 
 - **License Module API (Breaking Change for Internal Code)**
   - `verify_license_signature()` now takes `&RsaPublicKey` parameter instead of reading from hardcoded constant
@@ -25,6 +40,7 @@ All notable changes to CAHTQT Client are documented here, following semantic ver
 - **Command: import_license_file**
   - Now re-runs full license verification after importing, using active communication certificate path
   - Properly returns `NoCommunicationCert` error if certificate path not configured
+  - LicenseSection calls `recheckLicense()` after successful import to sync protected routes
 
 - **Certificate Handling**
   - Path traversal validation: Reject relative paths and `..` directory traversal attempts
@@ -158,15 +174,19 @@ pub fn is_licensed(
 
 | File | Type | Change |
 |------|------|--------|
+| src/components/license-required.tsx | Created | Per-route license guard wrapper |
+| src/components/license-not-found-page.tsx | Created | License error/prompt UI |
+| src/contexts/app-context.tsx | Modified | Added license state via useLicenseStatus hook |
+| src/App.tsx | Modified | Wrapped protected routes with LicenseRequired; Settings always accessible |
+| src/pages/Settings/LicenseSection.tsx | Modified | Conditional comm cert banner + calls recheckLicense() after import |
 | src-tauri/src/license/error.rs | Modified | Added `NoCommunicationCert` variants |
 | src-tauri/src/license/payload.rs | Modified | Signature now takes `&RsaPublicKey` parameter |
 | src-tauri/src/license/mod.rs | Modified | Added `extract_public_key_from_cert()`, updated `is_licensed()` |
 | src-tauri/src/commands/license.rs | Modified | Updated to pass cert path, handle new error variant |
 | src-tauri/src/lib.rs | Modified | Read cert path from settings before calling `is_licensed()` |
-| docs/system-architecture.md | Created | Full architecture documentation |
-| docs/code-standards.md | Created | Code organization and standards |
-| docs/project-overview-pdr.md | Created | Requirements and design decisions |
-| docs/project-changelog.md | Created | This file |
+| docs/system-architecture.md | Modified | Updated LicenseGate → LicenseRequired per-route pattern |
+| docs/codebase-summary.md | Modified | Updated component list + per-route flow diagram |
+| docs/project-changelog.md | Modified | Added license validate startup + per-route architecture changes |
 
 ---
 

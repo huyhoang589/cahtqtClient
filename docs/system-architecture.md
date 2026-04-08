@@ -46,8 +46,10 @@ Phase B: License File Verification
   │  └─ expires_at (if present) must be >= current UTC time
   └─ Result: LicenseInfo cached in AppState
 
-LicenseGate Frontend
-  └─ Calls check_license() → reads cached LicenseInfo → routes based on status
+LicenseRequired Frontend Guard (Per-Route)
+  └─ Wrapped around individual routes (Encrypt, Decrypt, Partners)
+  └─ Settings always accessible (no license blocking)
+  └─ Calls check_license() → reads cached LicenseInfo → renders children or LicenseNotFoundPage
 ```
 
 ### 2. Communication Certificate Management
