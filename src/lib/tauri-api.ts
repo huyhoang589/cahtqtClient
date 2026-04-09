@@ -93,6 +93,11 @@ export const selectCertFile = () =>
     { name: "Certificates", extensions: ["crt", "pem", "cer", "der"] },
   ]);
 
+export const selectCommKeyFile = () =>
+  selectFiles([
+    { name: "Communication Key", extensions: ["sf1"] },
+  ]);
+
 export const selectDllFile = () =>
   selectFiles([{ name: "DLL Files", extensions: ["dll"] }]);
 
@@ -142,11 +147,9 @@ export const deletePartnerMember = (id: string) =>
 
 export const encryptBatch = (
   srcPaths: string[],
-  partnerName: string,
-  certPaths: string[],
   outputDir?: string | null,
 ) =>
-  invoke<EncryptResult>("encrypt_batch", { srcPaths, partnerName, certPaths, outputDir: outputDir ?? null });
+  invoke<EncryptResult>("encrypt_batch", { srcPaths, outputDir: outputDir ?? null });
 
 export const decryptBatch = (
   filePaths: string[],
@@ -167,11 +170,25 @@ export const setCommunication = (
 export const getCommunicationCert = () =>
   invoke<CommunicationCertInfo | null>("get_communication_cert");
 
-export const saveCommunicationCert = (certPath: string) =>
-  invoke<CommunicationCertInfo>("save_communication_cert", { certPath });
+export const previewCommunicationKey = (sf1Path: string) =>
+  invoke<CommunicationCertInfo>("preview_communication_key", { sf1Path });
 
-export const clearCommunicationCert = () =>
-  invoke<void>("clear_communication_cert");
+export const confirmSetCommunicationKey = (
+  sf1Path: string,
+  certInfoCn: string,
+  certInfoOrg: string | null,
+  certInfoSerial: string,
+  certInfoValidUntil: string,
+) =>
+  invoke<CommunicationCertInfo>("confirm_set_communication_key", {
+    sf1Path, certInfoCn, certInfoOrg, certInfoSerial, certInfoValidUntil,
+  });
+
+export const cancelPreviewCommunicationKey = () =>
+  invoke<void>("cancel_preview_communication_key");
+
+export const removeCommunicationKey = () =>
+  invoke<void>("remove_communication_key");
 
 // ---- License -----------------------------------------------------------------
 
@@ -186,6 +203,9 @@ export const exportMachineCredential = () =>
 
 export const importLicenseFile = (filePath: string) =>
   invoke<ImportLicenseResult>("import_license_file", { filePath });
+
+export const revalidateLicense = () =>
+  invoke<LicenseInfo>("revalidate_license");
 
 // ---- Logs --------------------------------------------------------------------
 

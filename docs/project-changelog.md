@@ -4,9 +4,18 @@ All notable changes to CAHTQT Client are documented here, following semantic ver
 
 ---
 
-## [Unreleased] — feature/license Branch
+## [Unreleased] — feature/encrypt-license-func-upgrade Branch
 
 ### Added
+
+- **SF1 Communication Key Encrypt/Decrypt Lifecycle** — Commit 43495fc
+  - Centralized `comm_key_service` module for shared decrypt/cleanup logic
+  - Two-step SET KEY UX: browse .sf1 → preview cert info → confirm save
+  - REMOVE KEY operation clears all traces (file + DB + settings)
+  - Per-session decrypt lifecycle: decrypt .sf1 before encrypt/decrypt operations, cleanup after
+  - Startup orphan cleanup: delete unreferenced temp certs in recovery scenario
+  - License startup defers validation to token login (Pending status until authenticated)
+  - `DATA/COMM_KEY/` directory for encrypted .sf1 storage
 
 - **License Validate at Startup Feature**
   - Per-route `LicenseRequired` guard component replaces full-app LicenseGate gate

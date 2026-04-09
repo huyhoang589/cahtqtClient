@@ -1,5 +1,6 @@
 pub mod app_log;
 pub mod cert_parser;
+pub mod comm_key_service;
 pub mod commands;
 pub mod db;
 pub mod etoken;
@@ -34,6 +35,8 @@ pub struct AppState {
     pub token_login: Arc<Mutex<TokenLoginState>>,
     /// Cached license verification result — populated at startup
     pub license_info: Arc<Mutex<LicenseInfo>>,
+    /// Temp cert path from preview_communication_key (pending user confirm/cancel)
+    pub pending_comm_key_preview: Arc<Mutex<Option<String>>>,
 }
 
 /// Create required DATA subdirectories under app_data_dir on startup (idempotent).
@@ -45,6 +48,7 @@ fn initialize_data_directories(app_data_dir: &Path) {
         data.join("Certs").join("partners"),
         data.join("Certs").join("sender"),
         data.join("DB"),
+        data.join("COMM_KEY"),
         data.join("ENCRYPT"),
         data.join("DECRYPT"),
         data.join("LOGS"),
@@ -74,6 +78,15 @@ pub fn run() {
                 db::init_db(&app_data_dir).await
                     .expect("Failed to initialize database")
             });
+
+            // Cleanup orphaned temp certs from crash recovery (after DB init)
+            {
+                let temp_cert_dir = app_data_dir.join("DATA").join("Certs").join("partners");
+                let referenced = tauri::async_runtime::block_on(async {
+                    crate::db::partner_members_repo::list_all_cert_paths(&pool).await.unwrap_or_default()
+                });
+                comm_key_service::cleanup_orphaned_certs(&temp_cert_dir, &referenced);
+            }
 
             // A-1: ensure output subdirectories exist under configured OUTPUT_DATA_DIR
             {
@@ -131,7 +144,7 @@ pub fn run() {
                     crate::db::settings_repo::get_setting(&pool, "communication_cert_path").await.ok().flatten()
                 });
 
-                license::is_licensed(&pkcs11_path, &app_data_dir, comm_cert_path.as_deref())
+                license::is_licensed(&pkcs11_path, &app_data_dir, comm_cert_path.as_deref(), None)
             };
 
             app.manage(AppState {
@@ -142,6 +155,7 @@ pub fn run() {
                 last_token_scan: Arc::new(Mutex::new(None)),
                 token_login: Arc::new(Mutex::new(TokenLoginState::default())),
                 license_info: Arc::new(Mutex::new(license_info)),
+                pending_comm_key_preview: Arc::new(Mutex::new(None)),
             });
 
             Ok(())
@@ -174,13 +188,16 @@ pub fn run() {
             commands::decrypt::decrypt_batch,
             commands::communication::set_communication,
             commands::communication::get_communication_cert,
-            commands::communication::save_communication_cert,
-            commands::communication::clear_communication_cert,
+            commands::communication::preview_communication_key,
+            commands::communication::confirm_set_communication_key,
+            commands::communication::cancel_preview_communication_key,
+            commands::communication::remove_communication_key,
             commands::logs::list_logs,
             commands::license::check_license,
             commands::license::get_license_info,
             commands::license::export_machine_credential,
             commands::license::import_license_file,
+            commands::license::revalidate_license,
         ])
         .run(tauri::generate_context!())
         .expect("Error while running CAHTQT application");

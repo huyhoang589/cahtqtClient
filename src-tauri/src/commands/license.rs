@@ -61,6 +61,7 @@ pub async fn check_license(_state: State<'_, AppState>) -> Result<LicenseCheckRe
             LicenseStatus::MachineMismatch => ("error".to_string(), Some("This license is not valid on this machine. Please contact IT.".to_string())),
             LicenseStatus::Corrupted => ("error".to_string(), Some("License file is invalid or has been tampered with. Please contact IT.".to_string())),
             LicenseStatus::NoCommunicationCert => ("error".to_string(), Some("Communication certificate not configured. Please import the server certificate in Settings.".to_string())),
+            LicenseStatus::Pending => ("pending".to_string(), Some("License check pending — login to token to verify.".to_string())),
         };
         Ok(LicenseCheckResult {
             state: state_str,
@@ -229,7 +230,7 @@ pub async fn import_license_file(
         .ok()
         .flatten();
 
-    let new_info = license::is_licensed(&pkcs11_path, &app_data_dir, comm_cert_path.as_deref());
+    let new_info = license::is_licensed(&pkcs11_path, &app_data_dir, comm_cert_path.as_deref(), None);
     let result = ImportLicenseResult {
         status: new_info.status.clone(),
         expires_at: new_info.expires_at,
@@ -241,5 +242,98 @@ pub async fn import_license_file(
     }
 
     Ok(result)
+}
+
+/// Re-validate license after token login — called when .sf1 decrypt becomes possible.
+/// Has access to PKCS#11 session + PIN + own_cert_der via AppState.token_login.
+#[tauri::command]
+pub async fn revalidate_license(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<LicenseInfo, String> {
+    let settings = crate::db::settings_repo::get_all_settings(&state.db)
+        .await
+        .map_err(|e| e.to_string())?;
+    let settings_map: std::collections::HashMap<String, String> =
+        settings.into_iter().map(|s| (s.key, s.value)).collect();
+
+    let pkcs11_mode = settings_map.get("pkcs11_mode").cloned().unwrap_or_else(|| "auto".to_string());
+    let pkcs11_path = if pkcs11_mode == "manual" {
+        settings_map.get("pkcs11_manual_path").cloned().unwrap_or_default()
+    } else {
+        crate::etoken::library_detector::auto_detect_library(None)
+            .map(|info| info.path)
+            .unwrap_or_default()
+    };
+
+    let comm_cert_path = crate::db::settings_repo::get_setting(&state.db, "communication_cert_path")
+        .await
+        .ok()
+        .flatten();
+
+    let app_data_dir = app.path().app_data_dir()
+        .map_err(|e| format!("Cannot resolve app data dir: {}", e))?;
+
+    // Build token session params from login state
+    let token_session = {
+        let login = state.token_login.lock().map_err(|e| format!("Lock poisoned: {e}"))?;
+        if login.status != crate::etoken::models::TokenStatus::LoggedIn {
+            return Err("Token not logged in — cannot revalidate license".to_string());
+        }
+        let pin = zeroize::Zeroizing::new(login.get_pin().ok_or("PIN not available")?.to_string());
+        let lib_path = login.pkcs11_lib_path.clone().unwrap_or_default();
+        let slot = login.slot_id.unwrap_or(0);
+        let own_cert_der: Vec<u8> = {
+            let scan = state.last_token_scan.lock().map_err(|e| format!("Lock poisoned: {e}"))?;
+            scan.as_ref()
+                .and_then(|s| s.certificates.first())
+                .map(|e| e.certificate.raw_der.clone())
+                .unwrap_or_default()
+        };
+
+        let htqt_lib_arc = state.htqt_lib.clone();
+        let temp_dir = app_data_dir.join("DATA").join("Certs").join("partners")
+            .to_string_lossy().to_string();
+
+        // We need the HtqtLib ref — must do verification inside spawn_blocking with the lock
+        (lib_path, slot, pin, own_cert_der, temp_dir, htqt_lib_arc, pkcs11_path.clone())
+    };
+
+    let (ts_lib_path, ts_slot, ts_pin, ts_der, ts_temp_dir, htqt_lib_arc, pkcs11_for_license) = token_session;
+    let comm_cert_path_clone = comm_cert_path.clone();
+    let app_data_dir_clone = app_data_dir.clone();
+    let app_clone = app.clone();
+
+    let new_info = tokio::task::spawn_blocking(move || {
+        let guard = htqt_lib_arc.lock().map_err(|e| format!("Lock poisoned: {e}"))?;
+        let htqt_lib = guard.as_ref().ok_or("htqt_crypto.dll not loaded")?;
+
+        let ts = license::TokenSessionParams {
+            htqt_lib,
+            pkcs11_lib: &ts_lib_path,
+            slot_id: ts_slot,
+            pin: &ts_pin,
+            own_cert_der: ts_der,
+            app: app_clone,
+            temp_dir: ts_temp_dir,
+        };
+
+        Ok::<LicenseInfo, String>(license::is_licensed(
+            &pkcs11_for_license,
+            &app_data_dir_clone,
+            comm_cert_path_clone.as_deref(),
+            Some(ts),
+        ))
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    // Update cached state
+    if let Ok(mut cached) = state.license_info.lock() {
+        *cached = new_info.clone();
+    }
+
+    emit_app_log(&app, "info", &format!("License revalidated: {:?}", new_info.status));
+    Ok(new_info)
 }
 

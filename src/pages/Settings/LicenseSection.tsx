@@ -19,6 +19,7 @@ const STATUS_CONFIG: Record<LicenseStatus, { color: string; label: string }> = {
   machine_mismatch: { color: "var(--cahtqt-color-error)",    label: "Machine Mismatch" },
   corrupted:        { color: "var(--cahtqt-color-error)",    label: "Corrupted" },
   no_communication_cert: { color: "var(--cahtqt-color-warning)", label: "No Comm Cert" },
+  pending:          { color: "var(--cahtqt-color-warning)",  label: "Pending — Login to Token" },
 };
 
 export default function LicenseSection() {

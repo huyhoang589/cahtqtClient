@@ -74,7 +74,7 @@ export default function EncryptPage() {
     const outputDir = outputDataDir
       ? `${outputDataDir}/SF/ENCRYPT/`  // flat — no partner subfolder
       : null;
-    await startEncrypt([commCert.file_path], commCert.cn, outputDir);
+    await startEncrypt(outputDir);
     setStep("done");
   };
 

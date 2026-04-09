@@ -10,9 +10,9 @@ export function useEncrypt() {
   const [progress, setProgress] = useState<EncryptProgress[]>([]);
   const [result, setResult] = useState<EncryptResult | null>(null);
 
-  /// certPaths = cert_file_paths of all selected members; partnerName = Partner.name (output folder)
-  const startEncrypt = useCallback(async (certPaths: string[], partnerName: string, outputDir?: string | null) => {
-    if (selectedFiles.length === 0 || certPaths.length === 0 || !partnerName) return;
+  /// Backend resolves comm key internally — only pass outputDir override
+  const startEncrypt = useCallback(async (outputDir?: string | null) => {
+    if (selectedFiles.length === 0) return;
 
     setIsEncrypting(true);
     setProgress([]);
@@ -23,7 +23,7 @@ export function useEncrypt() {
     });
 
     try {
-      const res = await encryptBatch(selectedFiles, partnerName, certPaths, outputDir);
+      const res = await encryptBatch(selectedFiles, outputDir);
       setResult(res);
     } catch (e) {
       setResult({ total: 0, success_count: 0, error_count: 1, errors: [String(e)] });

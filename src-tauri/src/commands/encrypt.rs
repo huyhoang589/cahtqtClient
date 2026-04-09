@@ -4,12 +4,14 @@ use std::path::Path;
 use std::ptr;
 use std::sync::atomic::Ordering;
 
-use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, State};
+use serde::Serialize;
+use tauri::{AppHandle, Emitter, Manager, State};
+use zeroize::Zeroizing;
 
 use crate::{
     app_log::emit_app_log,
     cert_parser,
+    comm_key_service::{self, TempCertGuard},
     db::{logs_repo, settings_repo},
     etoken::models::TokenStatus,
     htqt_ffi::{
@@ -21,8 +23,7 @@ use crate::{
 };
 
 /// Convert a path to its Windows 8.3 short path so it can be safely passed as a
-/// CString to DLLs that use ANSI (code-page) file APIs. Falls back to the original
-/// path if GetShortPathNameW fails (e.g. short-path generation disabled on that volume).
+/// CString to DLLs that use ANSI (code-page) file APIs.
 fn to_short_path(path: &str) -> String {
     extern "system" {
         fn GetShortPathNameW(lp_long: *const u16, lp_short: *mut u16, cch: u32) -> u32;
@@ -51,13 +52,6 @@ pub struct EncryptProgress {
     pub error: Option<String>,
 }
 
-#[derive(Deserialize)]
-pub struct EncryptRequest {
-    pub src_paths: Vec<String>,
-    pub partner_name: String,
-    pub cert_paths: Vec<String>,
-}
-
 #[derive(Serialize)]
 pub struct EncryptResult {
     pub total: usize,
@@ -67,13 +61,11 @@ pub struct EncryptResult {
 }
 
 /// Batch encrypt M files × N recipients via single encHTQT_multi DLL call.
-/// Progress emitted per (file, recipient) pair via cb_progress callback.
+/// Backend resolves comm key cert internally — no cert_paths from frontend.
 #[tauri::command]
 pub async fn encrypt_batch(
     app: AppHandle,
     src_paths: Vec<String>,
-    partner_name: String,
-    cert_paths: Vec<String>,
     output_dir: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<EncryptResult, String> {
@@ -84,7 +76,7 @@ pub async fn encrypt_batch(
     {
         return Err("Another operation is already running".to_string());
     }
-    let result = run_encrypt_batch(&app, &src_paths, &partner_name, &cert_paths, output_dir.as_deref(), &state).await;
+    let result = run_encrypt_batch(&app, &src_paths, output_dir.as_deref(), &state).await;
     state.is_operation_running.store(false, Ordering::SeqCst);
     result
 }
@@ -92,8 +84,6 @@ pub async fn encrypt_batch(
 async fn run_encrypt_batch(
     app: &AppHandle,
     src_paths: &[String],
-    _partner_name: &str,
-    cert_paths: &[String],
     output_dir_override: Option<&str>,
     state: &State<'_, AppState>,
 ) -> Result<EncryptResult, String> {
@@ -103,7 +93,7 @@ async fn run_encrypt_batch(
         if login.status != TokenStatus::LoggedIn {
             return Err("Token not logged in — login via Settings first".to_string());
         }
-        let pin = login.get_pin().ok_or("PIN not available — re-login required")?.to_string();
+        let pin = Zeroizing::new(login.get_pin().ok_or("PIN not available — re-login required")?.to_string());
         (
             login.pkcs11_lib_path.clone().unwrap_or_default(),
             login.slot_id.unwrap_or(0),
@@ -111,11 +101,19 @@ async fn run_encrypt_batch(
         )
     };
 
-    if cert_paths.is_empty() {
-        return Err("No recipient certificates provided".to_string());
+    // Read comm key .sf1 path from settings
+    let comm_key_path = settings_repo::get_setting(&state.db, "communication_cert_path")
+        .await
+        .ok()
+        .flatten()
+        .filter(|v| !v.is_empty())
+        .ok_or("Communication key not set — configure in Settings first")?;
+
+    if !Path::new(&comm_key_path).exists() {
+        return Err("Communication key file not found — re-set in Settings".to_string());
     }
 
-    // Get sender's own cert DER (first cert from last scan, for SF v1 backward compat)
+    // Get sender's own cert DER (first cert from last scan)
     let own_cert_der: Vec<u8> = {
         let scan = state.last_token_scan.lock().map_err(|e| format!("Lock poisoned: {e}"))?;
         scan.as_ref()
@@ -124,8 +122,7 @@ async fn run_encrypt_batch(
             .unwrap_or_default()
     };
 
-    // Resolve output directory: use override if provided, else output_data_dir\SF\ENCRYPT
-    // (flat — no partner subfolder, so "Open Folder" on the Encrypt page opens the right place)
+    // Resolve output directory
     let output_dir_string = if let Some(dir) = output_dir_override {
         dir.to_string()
     } else {
@@ -146,22 +143,15 @@ async fn run_encrypt_batch(
         .map_err(|e| format!("Cannot create output directory: {}", e))?;
 
     let file_count = src_paths.len();
-    let recip_count = cert_paths.len();
-    let total_pairs = file_count * recip_count;
-
-    if total_pairs > 10_000 {
-        emit_app_log(app, "warning",
-            &format!("Large batch: {} files × {} recipients = {} operations", file_count, recip_count, total_pairs));
+    if file_count == 0 {
+        return Err("No files to encrypt".to_string());
     }
-    emit_app_log(app, "info",
-        &format!("Starting encryption: {} file(s) × {} recipient(s)", file_count, recip_count));
 
-    // Use Windows short path so DLL's ANSI file APIs can resolve Unicode directory names
+    emit_app_log(app, "info", &format!("Starting encryption: {} file(s)", file_count));
+
     let output_dir_str = to_short_path(&output_dir_string);
-    // ISO date suffix: -{YYYYMMDD} — DLL uses file_id as output filename base, appends .sf1
     let date_suffix = chrono::Local::now().format("-%Y%m%d").to_string();
 
-    // Pre-compute file_ids ({stem}-{YYYYMMDD}) — DLL uses this in output filename
     let file_id_strings: Vec<String> = src_paths
         .iter()
         .map(|p| {
@@ -173,44 +163,51 @@ async fn run_encrypt_batch(
         })
         .collect();
 
-    // Extract recipient_id (cert CN) from each cert file via cert_parser
-    let recipient_id_strings: Vec<String> = cert_paths
-        .iter()
-        .map(|cp| {
-            cert_parser::parse_cert_file(cp)
-                .map(|info| info.cn)
-                .unwrap_or_else(|_| {
-                    Path::new(cp)
-                        .file_stem()
-                        .map(|s| s.to_string_lossy().to_string())
-                        .unwrap_or_else(|| "recipient".to_string())
-                })
-        })
-        .collect();
+    // Resolve temp dir for .sf1 decrypted cert
+    let app_data_dir = app.path().app_data_dir()
+        .map_err(|e| format!("Cannot resolve app data dir: {}", e))?;
+    let temp_dir = app_data_dir.join("DATA").join("Certs").join("partners")
+        .to_string_lossy().to_string();
 
-    // Clone data for spawn_blocking (no refs across await)
+    // Clone data for spawn_blocking
     let src_paths_owned = src_paths.to_vec();
-    let cert_paths_owned = cert_paths.to_vec();
     let htqt_lib_arc = state.htqt_lib.clone();
     let app_clone = app.clone();
-    let recip_ids_clone = recipient_id_strings.clone();
     let file_ids_clone = file_id_strings.clone();
+    let comm_key_path_clone = comm_key_path.clone();
+    let pkcs11_lib_clone = pkcs11_lib.clone();
 
     let batch_results = tokio::task::spawn_blocking(move || -> Result<Vec<BatchResult>, String> {
-        // NOTE: errors returned here are caught below and emitted as app_log before propagating.
-        // Build CString arrays — all must outlive the DLL call
+        // Step 1: Decrypt .sf1 comm key → temp cert path
+        // decrypt_comm_key opens its own PKCS#11 session for RSA-OAEP decrypt, which
+        // closes automatically when done. Sequential: session 1 closes before session 2.
+        let temp_cert_path = {
+            let guard = htqt_lib_arc.lock().map_err(|e| format!("Lock poisoned: {e}"))?;
+            let lib = guard.as_ref().ok_or("htqt_crypto.dll not loaded")?;
+            comm_key_service::decrypt_comm_key(
+                &comm_key_path_clone, &temp_dir, lib,
+                &pkcs11_lib_clone, slot_id, &*pin_str, own_cert_der.clone(), app_clone.clone(),
+            )?
+            // guard dropped here — htqt_lib unlocked before enc_multi
+        };
+
+        // RAII guard ensures cleanup even on panic
+        let _cert_guard = TempCertGuard { path: Some(temp_cert_path.clone()) };
+
+        // Extract recipient_id (CN) from decrypted cert
+        let recipient_id = cert_parser::parse_cert_file(&temp_cert_path)
+            .map(|info| info.cn)
+            .unwrap_or_else(|_| "recipient".to_string());
+
+        // Build CString arrays
         let input_cstrings: Vec<CString> = src_paths_owned.iter()
             .map(|p| CString::new(p.as_str()).map_err(|e| e.to_string()))
             .collect::<Result<_, _>>()?;
         let file_id_cstrings: Vec<CString> = file_ids_clone.iter()
             .map(|s| CString::new(s.as_str()).map_err(|e| e.to_string()))
             .collect::<Result<_, _>>()?;
-        let cert_path_cstrings: Vec<CString> = cert_paths_owned.iter()
-            .map(|p| CString::new(p.as_str()).map_err(|e| e.to_string()))
-            .collect::<Result<_, _>>()?;
-        let recip_id_cstrings: Vec<CString> = recip_ids_clone.iter()
-            .map(|s| CString::new(s.as_str()).map_err(|e| e.to_string()))
-            .collect::<Result<_, _>>()?;
+        let cert_cstring = CString::new(temp_cert_path.as_str()).map_err(|e| e.to_string())?;
+        let recip_id_cstring = CString::new(recipient_id.as_str()).map_err(|e| e.to_string())?;
         let output_dir_cstring = CString::new(output_dir_str).map_err(|e| e.to_string())?;
 
         let file_entries: Vec<FileEntry> = (0..file_count)
@@ -220,28 +217,27 @@ async fn run_encrypt_batch(
             })
             .collect();
 
-        let recip_entries: Vec<RecipientEntry> = (0..recip_count)
-            .map(|i| RecipientEntry {
-                cert_path: cert_path_cstrings[i].as_ptr(),
-                recipient_id: recip_id_cstrings[i].as_ptr(),
-            })
-            .collect();
+        // Single recipient from decrypted comm key
+        let recip_entries = vec![RecipientEntry {
+            cert_path: cert_cstring.as_ptr(),
+            recipient_id: recip_id_cstring.as_ptr(),
+        }];
 
         let params = BatchEncryptParams {
             files: file_entries.as_ptr(),
             file_count: file_count as u32,
             recipients: recip_entries.as_ptr(),
-            recipient_count: recip_count as u32,
+            recipient_count: 1,
             output_dir: output_dir_cstring.as_ptr(),
             flags: HTQT_BATCH_CONTINUE_ON_ERROR,
             reserved: [ptr::null_mut(); 2],
         };
 
-        // Open PKCS#11 session for this batch operation
+        // Step 2: Open PKCS#11 session for encrypt signing (session 1 already closed)
         let ctx = open_token_session(
-            &pkcs11_lib,
+            &pkcs11_lib_clone,
             slot_id,
-            &pin_str,
+            &*pin_str,
             app_clone,
             own_cert_der.clone(),
             "encrypt-progress".to_string(),
@@ -252,7 +248,7 @@ async fn run_encrypt_batch(
 
         let cbs = CryptoCallbacksV2 {
             sign_fn: Some(callbacks::cb_rsa_pss_sign),
-            rsa_dec_fn: None, // not needed for encrypt
+            rsa_dec_fn: None,
             progress_fn: Some(callbacks::cb_progress),
             user_ctx: user_ctx_ptr,
             own_cert_der: if own_cert_der.is_empty() { ptr::null() } else { own_cert_der.as_ptr() },
@@ -260,24 +256,24 @@ async fn run_encrypt_batch(
             reserved: [ptr::null_mut(); 3],
         };
 
-        // SF v1: one output .sf1 per file (all recipients embedded), capacity = file_count
         let mut batch_results: Vec<BatchResult> = (0..file_count)
             .map(|_| BatchResult::default())
             .collect();
 
+        // Step 3: Encrypt — single lock acquisition
         let guard = htqt_lib_arc.lock().map_err(|e| format!("Lock poisoned: {e}"))?;
         match guard.as_ref() {
             None => return Err("htqt_crypto.dll not loaded".to_string()),
             Some(lib) => { lib.enc_multi(&params, &cbs, &mut batch_results)?; }
         }
         drop(guard);
-        drop(ctx_box); // closes PKCS#11 session + finalizes Pkcs11
+        drop(ctx_box);
 
+        // _cert_guard drops here → cleanup_temp_cert
         Ok(batch_results)
     });
 
-    // Intercept DLL-level failures: emit error progress events and return Ok(EncryptResult)
-    // instead of propagating Err, so the progress panel shows error rows (not an unhandled throw).
+    // Intercept DLL-level failures
     let batch_results = match batch_results.await {
         Ok(Ok(results)) => results,
         Ok(Err(dll_err)) => {
@@ -290,7 +286,6 @@ async fn run_encrypt_batch(
             });
         }
         Err(join_err) => {
-            // spawn_blocking thread panic — treat same as DLL error
             let dll_err = join_err.to_string();
             emit_dll_error_as_progress(app, src_paths, &dll_err);
             return Ok(EncryptResult {
@@ -302,7 +297,7 @@ async fn run_encrypt_batch(
         }
     };
 
-    // Collect results per file (SF v1: one .sf1 per input file), emit progress, log to DB
+    // Collect results per file, emit progress, log to DB
     let mut success_count = 0usize;
     let mut error_count = 0usize;
     let mut errors: Vec<String> = Vec::new();
@@ -314,10 +309,10 @@ async fn run_encrypt_batch(
         let output_path = {
             let buf = &result.output_path;
             let nul_pos = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
-            // SAFETY: slice contains no null bytes, all indices valid within buf
-            unsafe { std::str::from_utf8_unchecked(
-                std::slice::from_raw_parts(buf.as_ptr() as *const u8, nul_pos)
-            )}.to_string()
+            let bytes = &buf[..nul_pos];
+            // SAFETY: reinterpret [i8] as [u8] — same size/layout, then lossy-convert
+            let byte_slice = unsafe { std::slice::from_raw_parts(bytes.as_ptr() as *const u8, bytes.len()) };
+            String::from_utf8_lossy(byte_slice).to_string()
         };
 
         let file_name = Path::new(file_path_str)
@@ -335,10 +330,9 @@ async fn run_encrypt_batch(
             let detail = {
                 let buf = &result.error_detail;
                 let nul_pos = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
-                // SAFETY: slice contains no null bytes, all indices valid within buf
-                unsafe { std::str::from_utf8_unchecked(
-                    std::slice::from_raw_parts(buf.as_ptr() as *const u8, nul_pos)
-                )}.to_string()
+                let bytes = &buf[..nul_pos];
+                let byte_slice = unsafe { std::slice::from_raw_parts(bytes.as_ptr() as *const u8, bytes.len()) };
+                String::from_utf8_lossy(byte_slice).to_string()
             };
             let error_str = if detail.is_empty() {
                 format!("[{}] {}: {}", result.status, name, message)
@@ -349,7 +343,6 @@ async fn run_encrypt_batch(
             ("error".to_string(), Some(error_str))
         };
 
-        // Emit per-file progress event for UI status tracking
         let _ = app.emit("encrypt-progress", EncryptProgress {
             current: file_idx + 1,
             total: total_files,
@@ -381,8 +374,6 @@ async fn run_encrypt_batch(
 }
 
 /// Emits all source files as error progress events for a DLL-level batch failure.
-/// Called when the DLL itself fails before processing any file (e.g. error -33: output dir not found).
-/// Returns Ok(EncryptResult) rather than Err so the progress panel shows error rows.
 fn emit_dll_error_as_progress(app: &AppHandle, src_paths: &[String], dll_err: &str) {
     let error_msg = format!("Encryption failed: {}", dll_err);
     for (i, fp) in src_paths.iter().enumerate() {

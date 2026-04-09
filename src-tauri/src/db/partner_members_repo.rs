@@ -89,6 +89,16 @@ pub async fn delete_partner_member(pool: &Pool<Sqlite>, id: &str) -> Result<(), 
     Ok(())
 }
 
+/// Fetch all cert_file_path values for orphan cleanup (startup)
+pub async fn list_all_cert_paths(pool: &Pool<Sqlite>) -> Result<Vec<String>, sqlx::Error> {
+    let rows: Vec<(String,)> = sqlx::query_as(
+        "SELECT cert_file_path FROM partner_members WHERE cert_file_path != ''"
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(|(p,)| p).collect())
+}
+
 /// Fetch multiple partner members by their IDs (for encrypt batch)
 pub async fn get_partner_members_by_ids(
     pool: &Pool<Sqlite>,

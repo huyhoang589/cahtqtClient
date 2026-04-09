@@ -10,14 +10,28 @@ use x509_parser::prelude::*;
 
 use error::{LicenseError, LicenseInfo, LicenseStatus};
 
+/// Token session params needed for .sf1 decryption during license verification.
+pub struct TokenSessionParams<'a> {
+    pub htqt_lib: &'a crate::htqt_ffi::HtqtLib,
+    pub pkcs11_lib: &'a str,
+    pub slot_id: u32,
+    pub pin: &'a str,
+    pub own_cert_der: Vec<u8>,
+    pub app: tauri::AppHandle,
+    pub temp_dir: String,
+}
+
 /// Run the full license verification pipeline.
-/// Designed to be called once at startup — result cached in AppState.
+/// Designed to be called at startup and after token login — result cached in AppState.
 ///
-/// Pipeline phases:
-/// - Phase A: Token verification (is token present, challenge-response)
-/// - Phase B: License binding (read license.dat, verify signature, check expiry/machine/token)
-pub fn is_licensed(pkcs11_lib_path: &str, app_data_dir: &Path, comm_cert_path: Option<&str>) -> LicenseInfo {
-    match verify_full(pkcs11_lib_path, app_data_dir, comm_cert_path) {
+/// If comm_cert_path points to .sf1 and token_session is None, returns Pending status.
+pub fn is_licensed(
+    pkcs11_lib_path: &str,
+    app_data_dir: &Path,
+    comm_cert_path: Option<&str>,
+    token_session: Option<TokenSessionParams>,
+) -> LicenseInfo {
+    match verify_full(pkcs11_lib_path, app_data_dir, comm_cert_path, token_session) {
         Ok(info) => info,
         Err(e) => LicenseInfo {
             status: e.to_status(),
@@ -28,7 +42,12 @@ pub fn is_licensed(pkcs11_lib_path: &str, app_data_dir: &Path, comm_cert_path: O
 }
 
 /// Internal full verification — returns Result for clean error propagation.
-fn verify_full(pkcs11_lib_path: &str, app_data_dir: &Path, comm_cert_path: Option<&str>) -> Result<LicenseInfo, LicenseError> {
+fn verify_full(
+    pkcs11_lib_path: &str,
+    app_data_dir: &Path,
+    comm_cert_path: Option<&str>,
+    token_session: Option<TokenSessionParams>,
+) -> Result<LicenseInfo, LicenseError> {
     // Phase A: Token verification
     // Step 1: Initialize PKCS#11
     let pkcs11 = crate::etoken::token_manager::initialize(pkcs11_lib_path)
@@ -47,14 +66,11 @@ fn verify_full(pkcs11_lib_path: &str, app_data_dir: &Path, comm_cert_path: Optio
         .first()
         .ok_or_else(|| LicenseError::TokenMissing("No token slot available".into()))?;
 
-    // Open RO session for challenge-response (no PIN needed for public objects,
-    // but C_Sign may require login depending on token config)
     let session = pkcs11
         .open_ro_session(slot)
         .map_err(|e| LicenseError::TokenMissing(format!("Cannot open session: {}", e)))?;
 
     // Challenge-response is best-effort at startup — some tokens require PIN for C_Sign.
-    // If it fails, we still proceed with license file verification.
     let _ = token::verify_token_challenge(&session, &machine_fp);
 
     // Phase B: License binding
@@ -77,8 +93,38 @@ fn verify_full(pkcs11_lib_path: &str, app_data_dir: &Path, comm_cert_path: Optio
         return Err(LicenseError::NoCommunicationCert);
     }
 
-    let cert_data = std::fs::read(comm_path)
-        .map_err(|e| LicenseError::InvalidKey(format!("Cannot read communication cert: {}", e)))?;
+    // If comm_cert_path is .sf1, decrypt it first to get the actual cert
+    let is_sf1 = comm_path.to_lowercase().ends_with(".sf1");
+    let cert_data = if is_sf1 {
+        // Need token session for .sf1 decryption
+        let ts = token_session.ok_or_else(|| {
+            eprintln!("[license] .sf1 comm key found but no token session — returning Pending");
+            LicenseError::Pending
+        })?;
+
+        let temp_cert_path = crate::comm_key_service::decrypt_comm_key(
+            comm_path,
+            &ts.temp_dir,
+            ts.htqt_lib,
+            ts.pkcs11_lib,
+            ts.slot_id,
+            ts.pin,
+            ts.own_cert_der,
+            ts.app,
+        ).map_err(|e| LicenseError::InvalidKey(format!("Cannot decrypt .sf1 comm key: {}", e)))?;
+
+        let data = std::fs::read(&temp_cert_path)
+            .map_err(|e| LicenseError::InvalidKey(format!("Cannot read decrypted cert: {}", e)))?;
+
+        // Cleanup temp cert immediately
+        crate::comm_key_service::cleanup_temp_cert(&temp_cert_path);
+
+        data
+    } else {
+        std::fs::read(comm_path)
+            .map_err(|e| LicenseError::InvalidKey(format!("Cannot read communication cert: {}", e)))?
+    };
+
     eprintln!("[license] comm cert read OK — {} bytes from {}", cert_data.len(), comm_path);
 
     let public_key = extract_public_key_from_cert(&cert_data)?;

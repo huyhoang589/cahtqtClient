@@ -225,7 +225,7 @@ export type CertExpiryStatus = "valid" | "expiring_soon" | "expired";
 export type LicenseStatus =
   | "valid" | "expired" | "not_found" | "no_token"
   | "token_mismatch" | "machine_mismatch" | "corrupted"
-  | "no_communication_cert";
+  | "no_communication_cert" | "pending";
 
 export interface LicenseInfo {
   status: LicenseStatus;
@@ -234,7 +234,7 @@ export interface LicenseInfo {
 }
 
 export interface LicenseCheckResult {
-  state: "ok" | "no_token" | "no_license" | "error";
+  state: "ok" | "no_token" | "no_license" | "error" | "pending";
   error_msg: string | null;
 }
 

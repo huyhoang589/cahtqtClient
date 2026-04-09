@@ -13,6 +13,8 @@ pub enum LicenseStatus {
     MachineMismatch,
     Corrupted,
     NoCommunicationCert,
+    /// .sf1 comm key exists but no token session yet — waiting for user to login
+    Pending,
 }
 
 /// License info returned to frontend — no sensitive data exposed
@@ -45,6 +47,8 @@ pub enum LicenseError {
     NotLicensed,
     Corrupted(String),
     NoCommunicationCert,
+    /// .sf1 comm key exists but token session not available — deferred to after login
+    Pending,
 }
 
 impl fmt::Display for LicenseError {
@@ -58,6 +62,7 @@ impl fmt::Display for LicenseError {
             Self::NotLicensed => write!(f, "No valid license found. Please contact your IT department."),
             Self::Corrupted(msg) => write!(f, "License file is invalid or has been tampered with. {}", msg),
             Self::NoCommunicationCert => write!(f, "Communication certificate not configured. Please import the server certificate in Settings."),
+            Self::Pending => write!(f, "License check pending — login to token to verify."),
         }
     }
 }
@@ -74,6 +79,7 @@ impl LicenseError {
             Self::NotLicensed => LicenseStatus::NotFound,
             Self::Corrupted(_) => LicenseStatus::Corrupted,
             Self::NoCommunicationCert => LicenseStatus::NoCommunicationCert,
+            Self::Pending => LicenseStatus::Pending,
         }
     }
 }
