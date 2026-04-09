@@ -1,0 +1,22 @@
+A. SETTING PAGE
+1. SET COMMUNICATION
+- Change label "Browse Certificate" to "Browse communication key"
+- A Communication key (.sf1 file) will be selected. This is the recipient certificate encrypted by server side.
+- Add button "SET KEY" and button "REMOVE KEY". When button SET enable, button REMOVE disable. When SET complete (Communication key status: valid), button SET is disable and REMOVE is enable. SET KEY and REMOVE KEY work as following:
++ SET KEY: 
+(1) promt login token UI, after loging in, application decrypt communication key (.sf1 file). 
+(2) In case decryption successfull, recipient certificate (decrypted file) is temporary saved in %Appdata%\App_name. Application read recipient certificate, save recipient info in database and fullfill current recipient info card in SETTING PAGE. Then Communication key status change to Valid and communication key (.sf1 file) copy to %Appdata%\App_name\COMM_KEY dir. Then recipient certificate (decrypted file) permanently removed.
+(3) In case decryption fail or decrypted file is not a certificate (cannot read recipient info) communication key status change to Invalid.
++ REMOVE KEY:
+(1) Enable after SET KEY successfully
+(2) remove key: delete communication key (.sf1 file) in %Appdata%\App_name\COMM KEY dir and delete recipient infomation in database.
+
+2. LICENSE
+- Only work when communication key is set and valid.
+- Application decrypt communication key (.sf1 file) to get recipient certificate which is used to verify signature in license.dat
+- Recipient certificate file is temporary saved in %Appdata%\App_name\COMM_KEY and remove permanently after applying license.
+
+B. ENCRYPT PAGE
+- Each seassion, before encrypting currently added files, communication key (.sf1) is decrypted to get recipient certificate (temporary saved in %Appdata%\App_name\COMM_KEY)
+- Files is encrypted with Recipient certificate.
+- Afer finishing encrypt process (all added files are encrypted), the recipient certificate is removed permanently.
