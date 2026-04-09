@@ -1,10 +1,16 @@
 import { useState } from "react";
 import { exportMachineCredential } from "../lib/tauri-api";
+import type { LicenseGateState } from "../hooks/use-license-status";
+
+interface Props {
+  reason?: LicenseGateState;
+}
 
 /** Shown inside app-content area when license is missing or invalid */
-export default function LicenseNotFoundPage() {
+export default function LicenseNotFoundPage({ reason }: Props) {
   const [feedback, setFeedback] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const isPending = reason === "pending";
 
   const handleExport = async () => {
     setLoading(true);
@@ -22,21 +28,32 @@ export default function LicenseNotFoundPage() {
     <div style={containerStyle}>
       <div style={cardStyle}>
         <div style={iconStyle} />
-        <h2 style={headingStyle}>License Not Found</h2>
+        <h2 style={headingStyle}>
+          {isPending ? "Token Login Required" : "License Not Found"}
+        </h2>
         <p style={bodyStyle}>
-          This application is not licensed for this machine. Use the button
-          below to Export Machine Credential then contact your admin department.
+          {isPending
+            ? "Your communication key is set but token is not logged in. Please login your token to activate the license."
+            : "This application is not licensed for this machine. Use the button below to Export Machine Credential then contact your admin department."}
         </p>
-        <button
-          className="btn btn-secondary"
-          onClick={handleExport}
-          disabled={loading}
-          style={{ marginTop: 16 }}
-        >
-          {loading ? "Exporting…" : "Export Machine Credential"}
-        </button>
-        {feedback && <p style={feedbackStyle}>{feedback}</p>}
-        <p style={hintStyle}>To import a license file, go to Settings.</p>
+        {!isPending && (
+          <>
+            <button
+              className="btn btn-secondary"
+              onClick={handleExport}
+              disabled={loading}
+              style={{ marginTop: 16 }}
+            >
+              {loading ? "Exporting…" : "Export Machine Credential"}
+            </button>
+            {feedback && <p style={feedbackStyle}>{feedback}</p>}
+          </>
+        )}
+        <p style={hintStyle}>
+          {isPending
+            ? "Use the Login Token button in the sidebar or Settings page."
+            : "To import a license file, go to Settings."}
+        </p>
       </div>
     </div>
   );

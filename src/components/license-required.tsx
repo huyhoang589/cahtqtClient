@@ -15,10 +15,8 @@ export default function LicenseRequired({ children }: { children: React.ReactNod
     );
   }
 
-  // "pending" = .sf1 comm key exists but token not logged in yet — allow through
-  // (encrypt/decrypt routes have their own token-login guards)
-  if (license.licenseState !== "ok" && license.licenseState !== "pending") {
-    return <LicenseNotFoundPage />;
+  if (license.licenseState !== "ok") {
+    return <LicenseNotFoundPage reason={license.licenseState} />;
   }
 
   return <>{children}</>;

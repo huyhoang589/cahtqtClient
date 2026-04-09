@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Eye, EyeOff } from "lucide-react";
-import { loginToken } from "../lib/tauri-api";
+import { loginToken, revalidateLicense } from "../lib/tauri-api";
+import { useAppContext } from "../contexts/app-context";
 
 interface Props {
   open: boolean;
@@ -13,6 +14,7 @@ interface Props {
 /// Calls loginToken(pin) directly, manages its own loading/error state.
 /// PIN is cleared from component state immediately after the call.
 export default function LoginTokenModal({ open, onClose, onSuccess }: Props) {
+  const { license } = useAppContext();
   const [pin, setPin] = useState("");
   const [showPin, setShowPin] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -34,6 +36,13 @@ export default function LoginTokenModal({ open, onClose, onSuccess }: Props) {
     setError(null);
     try {
       const result = await loginToken(pin);
+      // Revalidate license now that token session is available for .sf1 decrypt
+      try {
+        await revalidateLicense();
+      } catch {
+        // Revalidation failed but token is logged in — gate will show actual state
+      }
+      await license.recheckLicense();
       onSuccess(result.cert_cn);
       onClose();
     } catch (e) {
