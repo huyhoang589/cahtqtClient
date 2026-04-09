@@ -1,0 +1,2 @@
+1. At startup, communication key (.sf1) set, but token not logged in -> license not validated -> Encrypt page and decrypt page still lock by license gate
+2. User scan token -> login token -> application revalidate license -> license valid -> unlock license gate -> show encrypt page and decrypt page
