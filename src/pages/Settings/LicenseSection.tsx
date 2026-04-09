@@ -29,13 +29,13 @@ export default function LicenseSection() {
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; msg: string } | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Load license info + check comm cert on mount
+  // Load license info + check comm cert on mount and when license state changes
   useEffect(() => {
     getLicenseInfo().then(setInfo).catch(() => {});
     getCommunicationCert()
       .then((cert) => setHasCommunicationCert(cert !== null))
       .catch(() => setHasCommunicationCert(false));
-  }, []);
+  }, [license.licenseState]);
 
   // Auto-clear feedback after 4s
   useEffect(() => {
