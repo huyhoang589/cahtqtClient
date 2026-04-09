@@ -230,7 +230,65 @@ pub async fn import_license_file(
         .ok()
         .flatten();
 
-    let new_info = license::is_licensed(&pkcs11_path, &app_data_dir, comm_cert_path.as_deref(), None);
+    // Try to build token session params if token is logged in — needed for .sf1 decryption
+    let token_logged_in = state.token_login.lock()
+        .map(|login| login.status == crate::etoken::models::TokenStatus::LoggedIn)
+        .unwrap_or(false);
+
+    let new_info = if token_logged_in {
+        // Build token session and verify with spawn_blocking (htqt_lib requires it)
+        let ts_data = {
+            let login = state.token_login.lock().map_err(|e| format!("Lock poisoned: {e}"))?;
+            let pin = zeroize::Zeroizing::new(login.get_pin().ok_or("PIN not available")?.to_string());
+            let lib_path = login.pkcs11_lib_path.clone().unwrap_or_default();
+            let slot = login.slot_id.unwrap_or(0);
+            let own_cert_der: Vec<u8> = {
+                let scan = state.last_token_scan.lock().map_err(|e| format!("Lock poisoned: {e}"))?;
+                scan.as_ref()
+                    .and_then(|s| s.certificates.first())
+                    .map(|e| e.certificate.raw_der.clone())
+                    .unwrap_or_default()
+            };
+            let temp_dir = app_data_dir.join("DATA").join("Certs").join("partners")
+                .to_string_lossy().to_string();
+            (lib_path, slot, pin, own_cert_der, temp_dir)
+        };
+
+        let (ts_lib_path, ts_slot, ts_pin, ts_der, ts_temp_dir) = ts_data;
+        let htqt_lib_arc = state.htqt_lib.clone();
+        let pkcs11_for_license = pkcs11_path.clone();
+        let comm_cert_path_clone = comm_cert_path.clone();
+        let app_data_dir_clone = app_data_dir.clone();
+        let app_clone = app.clone();
+
+        tokio::task::spawn_blocking(move || {
+            let guard = htqt_lib_arc.lock().map_err(|e| format!("Lock poisoned: {e}"))?;
+            let htqt_lib = guard.as_ref().ok_or("htqt_crypto.dll not loaded")?;
+
+            let ts = license::TokenSessionParams {
+                htqt_lib,
+                pkcs11_lib: &ts_lib_path,
+                slot_id: ts_slot,
+                pin: &ts_pin,
+                own_cert_der: ts_der,
+                app: app_clone,
+                temp_dir: ts_temp_dir,
+            };
+
+            Ok::<LicenseInfo, String>(license::is_licensed(
+                &pkcs11_for_license,
+                &app_data_dir_clone,
+                comm_cert_path_clone.as_deref(),
+                Some(ts),
+            ))
+        })
+        .await
+        .map_err(|e| e.to_string())??
+    } else {
+        // Token not logged in — verify without session (may return Pending for .sf1)
+        license::is_licensed(&pkcs11_path, &app_data_dir, comm_cert_path.as_deref(), None)
+    };
+
     let result = ImportLicenseResult {
         status: new_info.status.clone(),
         expires_at: new_info.expires_at,
