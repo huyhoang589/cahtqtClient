@@ -12,6 +12,7 @@ use crate::{
     etoken::models::TokenStatus,
     htqt_ffi::{
         callbacks,
+        error_codes::HTQT_BATCH_OVERWRITE_OUTPUT,
         htqt_error_display,
         token_context::open_token_session, CryptoCallbacksV2,
     },
@@ -146,7 +147,7 @@ async fn run_decrypt_batch(
 
         let mut results = Vec::with_capacity(file_paths_owned.len());
         for file_path in &file_paths_owned {
-            let dec_result = lib.decrypt_one_sfv1(file_path, &output_dir_str_clone, &cbs, 0);
+            let dec_result = lib.decrypt_one_sfv1(file_path, &output_dir_str_clone, &cbs, HTQT_BATCH_OVERWRITE_OUTPUT);
             results.push((file_path.clone(), dec_result));
         }
 
