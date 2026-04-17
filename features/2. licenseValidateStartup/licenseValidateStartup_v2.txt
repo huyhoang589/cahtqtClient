@@ -1,0 +1,9 @@
+1. add token serial to get_machine_fingerprint (machine.rs)
+2. Change LicensePayload struct (payload.rs) to match payload struct at server side as follow
+pub struct LicensePayload {
+    pub expires_at: Option<i64>,
+    pub issued_at: i64,
+    pub issued_by: String,
+    pub machine_fp: String,
+    pub product: String,
+}
