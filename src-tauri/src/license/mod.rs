@@ -57,7 +57,7 @@ fn verify_full(
     let token_serial = token::get_token_serial(&pkcs11)?;
 
     // Step 3: Challenge-response (proves token holds private key)
-    let machine_fp = machine::get_machine_fingerprint();
+    let machine_fp = machine::get_machine_fingerprint(&token_serial);
     let slots = pkcs11
         .get_slots_with_token()
         .map_err(|e| LicenseError::TokenMissing(format!("Cannot enumerate slots: {}", e)))?;
@@ -136,21 +136,12 @@ fn verify_full(
     // Step 7: Parse license payload
     let license = payload::parse_license_payload(&payload_bytes)?;
 
-    // Step 8: Check machine fingerprint binding
-    if let Some(ref licensed_fp) = license.machine_fp {
-        if *licensed_fp != machine_fp {
-            return Err(LicenseError::MachineMismatch);
-        }
+    // Step 8: Check machine fingerprint binding (token serial is embedded in fingerprint)
+    if license.machine_fp != machine_fp {
+        return Err(LicenseError::MachineMismatch);
     }
 
-    // Step 9: Check token serial binding
-    if let Some(ref licensed_serial) = license.token_serial {
-        if *licensed_serial != token_serial {
-            return Err(LicenseError::TokenMismatch);
-        }
-    }
-
-    // Step 10: Check expiry
+    // Step 9: Check expiry
     if let Some(expires_at) = license.expires_at {
         let now = chrono::Utc::now().timestamp();
         if now > expires_at {
@@ -158,11 +149,11 @@ fn verify_full(
         }
     }
 
-    // Step 11: All checks passed
+    // Step 10: All checks passed
     Ok(LicenseInfo {
         status: LicenseStatus::Valid,
         expires_at: license.expires_at,
-        product: license.product,
+        product: Some(license.product),
     })
 }
 

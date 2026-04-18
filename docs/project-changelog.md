@@ -4,6 +4,25 @@ All notable changes to CAHTQT Client are documented here, following semantic ver
 
 ---
 
+## [Unreleased] — feature/licenseValidaev2 & feature/encrypt-license-func-upgrade Branches
+
+### Added
+
+- **License Validate v2 Spec Alignment** — Commit d1b97e1
+  - Token serial now baked into machine fingerprint hash (`cpu:board:token_serial`)
+  - `LicensePayload` struct updated to v2 schema: removed `token_serial` and `version` fields, added required `issued_by: String` field
+  - `machine_fp` and `product` fields now required (non-Option) in payload struct
+  - Simplified machine binding check: direct string comparison instead of Option unwrapping
+  - Token serial verification now cryptographically bound into fingerprint (stronger security)
+
+### Changed (License v2)
+
+- **machine.rs:** `get_machine_fingerprint()` now requires `token_serial: &str` parameter and includes it in SHA256 hash
+- **payload.rs:** `LicensePayload` struct schema updated to match server-side v2 spec
+- **mod.rs:** Updated call to `get_machine_fingerprint` to pass token serial, removed redundant separate token serial check block, direct String comparison for machine_fp binding
+
+---
+
 ## [Unreleased] — feature/encrypt-license-func-upgrade Branch
 
 ### Added

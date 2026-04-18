@@ -11,15 +11,14 @@ use super::error::LicenseError;
 /// Separator between payload JSON and RSA signature in license.dat
 const SIG_SEPARATOR: &[u8] = b"||SIG||";
 
-/// License payload JSON schema matching the 2F-HBLS spec
+/// License payload JSON schema matching the 2F-HBLS v2 spec
 #[derive(Debug, Deserialize)]
 pub struct LicensePayload {
-    pub product: Option<String>,
-    pub machine_fp: Option<String>,
-    pub token_serial: Option<String>,
-    pub issued_at: Option<i64>,
     pub expires_at: Option<i64>,
-    pub version: Option<String>,
+    pub issued_at: i64,
+    pub issued_by: String,
+    pub machine_fp: String,
+    pub product: String,
 }
 
 /// Read and decode license.dat from the given directory.

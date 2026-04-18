@@ -35,13 +35,13 @@ pub fn get_board_serial() -> Option<String> {
     validate_hardware_id(&value)
 }
 
-/// Compute machine fingerprint: HEX(SHA-256(cpu_id:board_serial)[0..8]) = 16 hex chars.
+/// Compute machine fingerprint: HEX(SHA-256(cpu_id:board_serial:token_serial)[0..8]) = 16 hex chars.
 /// Falls back to "UNAVAIL" for missing hardware IDs.
-pub fn get_machine_fingerprint() -> String {
+pub fn get_machine_fingerprint(token_serial: &str) -> String {
     let cpu = get_cpu_id().unwrap_or_else(|| "UNAVAIL".to_string());
     let board = get_board_serial().unwrap_or_else(|| "UNAVAIL".to_string());
 
-    let input = format!("{}:{}", cpu, board);
+    let input = format!("{}:{}:{}", cpu, board, token_serial);
     let hash = Sha256::digest(input.as_bytes());
     // Take first 8 bytes → 16 hex chars
     hex::encode(&hash[..8])
